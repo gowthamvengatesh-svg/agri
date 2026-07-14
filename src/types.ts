@@ -1,6 +1,6 @@
 export type Role = 'Farmer' | 'Admin' | 'Researcher';
 export type ThemeMode = 'light' | 'dark';
-export type RoverConnection = 'WiFi' | 'Bluetooth' | 'Mock';
+export type RoverConnection = 'WiFi' | 'Bluetooth' | 'Offline';
 
 export interface User {
   id: string;
@@ -44,6 +44,43 @@ export interface SensorReading {
   synced: boolean;
 }
 
+export interface SensorAvailability {
+  npk: boolean;
+  moisture: boolean;
+  gps: boolean;
+  ph: boolean;
+  ec: boolean;
+  temperature: boolean;
+  camera?: boolean;
+}
+
+export interface RoverConfig {
+  id: 'primary';
+  name: string;
+  ipAddress: string;
+  connectionType: RoverConnection;
+  rememberDevice: boolean;
+  autoConnect: boolean;
+  connected: boolean;
+  lastConnectedAt?: string;
+  updatedAt: string;
+}
+
+export interface RoverStatus {
+  connected: boolean;
+  battery: number;
+  firmwareVersion: string;
+  ipAddress: string;
+  wifiSignal: number;
+  gpsStatus: 'Locked' | 'Searching' | 'Offline';
+  motorStatus: 'Ready' | 'Moving' | 'Stopped' | 'Offline';
+  currentSurvey?: string;
+  currentSamplingPoint: number;
+  movementStatus: string;
+  sensors: SensorAvailability;
+  diagnostics: Record<string, 'Healthy' | 'Warning' | 'Offline' | 'Not Installed'>;
+}
+
 export interface Survey {
   id: string;
   fieldId: string;
@@ -63,6 +100,7 @@ export interface Settings {
   units: 'Metric' | 'Imperial';
   darkMode: boolean;
   offlineSync: boolean;
+  autoSave: boolean;
   language: string;
 }
 
@@ -79,9 +117,6 @@ export interface AIInput {
   phosphorus: number;
   potassium: number;
   moisture: number;
-  temperature: number;
-  ph: number;
-  ec: number;
   crop: string;
 }
 
@@ -90,4 +125,9 @@ export interface AIResult {
   suitability: string;
   deficiency: string;
   soilHealthScore: number;
+  quantity: string;
+  irrigation: string;
+  suitableCrops: string;
+  confidence: number;
+  basis: string;
 }

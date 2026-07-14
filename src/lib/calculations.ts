@@ -13,14 +13,12 @@ export function computeField(input: Pick<Field, 'length' | 'width' | 'samplingDi
   return { area, samplingPoints, estimatedSurveyTime, estimatedBattery };
 }
 
-export function soilHealthScore(reading: Pick<SensorReading, 'nitrogen' | 'phosphorus' | 'potassium' | 'moisture' | 'ph' | 'ec'>) {
+export function soilHealthScore(reading: Pick<SensorReading, 'nitrogen' | 'phosphorus' | 'potassium' | 'moisture'>) {
   const n = normalize(reading.nitrogen, 20, 120);
   const p = normalize(reading.phosphorus, 8, 65);
   const k = normalize(reading.potassium, 40, 220);
   const m = bell(reading.moisture, 36, 24);
-  const ph = bell(reading.ph, 6.7, 1.8);
-  const ec = 100 - normalize(Math.abs(reading.ec - 1.2), 0, 3) * 0.65;
-  return Math.round(Math.max(0, Math.min(100, n * 0.2 + p * 0.16 + k * 0.18 + m * 0.2 + ph * 0.16 + ec * 0.1)));
+  return Math.round(Math.max(0, Math.min(100, n * 0.28 + p * 0.22 + k * 0.25 + m * 0.25)));
 }
 
 export function generateAIRecommendation(input: AIInput): AIResult {
@@ -28,9 +26,7 @@ export function generateAIRecommendation(input: AIInput): AIResult {
     nitrogen: input.nitrogen,
     phosphorus: input.phosphorus,
     potassium: input.potassium,
-    moisture: input.moisture,
-    ph: input.ph,
-    ec: input.ec
+    moisture: input.moisture
   });
   const lowN = input.nitrogen < 55;
   const lowP = input.phosphorus < 28;
@@ -42,10 +38,23 @@ export function generateAIRecommendation(input: AIInput): AIResult {
   ].join(', ');
   const crop = input.crop.trim() || 'Selected crop';
   const suitability = score > 78 ? `${crop} suitability is high` : score > 58 ? `${crop} suitability is moderate with corrections` : `${crop} needs soil recovery before scale-up`;
-  const deficiency = [lowN && 'Nitrogen', lowP && 'Phosphorus', lowK && 'Potassium', input.ph < 5.8 && 'Acidic pH', input.moisture < 24 && 'Low moisture']
+  const deficiency = [lowN && 'Nitrogen Low', lowP && 'Phosphorus Low', lowK && 'Potassium Low', input.moisture < 24 && 'Moisture Low']
     .filter(Boolean)
     .join(', ') || 'No major deficiency detected';
-  return { fertilizer, suitability, deficiency, soilHealthScore: score };
+  const quantity = score > 78 ? '40-60 kg/acre maintenance dose' : score > 58 ? '70-90 kg/acre corrected split dose' : '100-120 kg/acre staged recovery plan';
+  const irrigation = input.moisture < 24 ? 'Irrigate within 24 hours' : input.moisture < 36 ? 'Maintain regular irrigation cycle' : 'Moisture good, avoid over-irrigation';
+  const suitableCrops = score > 72 ? `${crop}, legumes, leafy vegetables` : score > 55 ? `${crop}, millets, pulses` : 'Hardy cover crops, millets, soil-building legumes';
+  return {
+    fertilizer,
+    suitability,
+    deficiency,
+    soilHealthScore: score,
+    quantity,
+    irrigation,
+    suitableCrops,
+    confidence: score > 75 ? 88 : score > 55 ? 74 : 62,
+    basis: 'Analysis based on available sensors: NPK and soil moisture.'
+  };
 }
 
 function normalize(value: number, min: number, max: number) {

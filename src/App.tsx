@@ -8,9 +8,12 @@ import {
   ChevronRight,
   Cloud,
   CloudOff,
+  Cpu,
   Copy,
+  Crosshair,
   Download,
   FileBarChart,
+  Gamepad2,
   Gauge,
   Home,
   Leaf,
@@ -20,10 +23,12 @@ import {
   Pause,
   Play,
   Plus,
+  Radio,
   RotateCw,
   Search,
   Settings as SettingsIcon,
   ShieldCheck,
+  Signal,
   Square,
   Sun,
   Trash2,
@@ -43,24 +48,26 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import type { AIInput, Field, Role, SensorReading, Settings, Survey, User } from './types';
+import type { AIInput, Field, Role, RoverConfig, RoverStatus, SensorReading, Settings, Survey, User } from './types';
 import { computeField, generateAIRecommendation, uid } from './lib/calculations';
 import { db } from './lib/db';
 import { useClock, useLiveQuery, useOnlineStatus } from './lib/hooks';
-import { getLiveReading } from './services/rover';
+import { getLiveReading, getRoverStatus, pauseRoverSurvey, resumeRoverSurvey, sendManualCommand, startRoverSurvey, stopRoverSurvey } from './services/rover';
 import { pendingSyncCount, syncNow } from './services/sync';
 import { exportBackup, restoreBackup } from './services/backup';
 import { exportCSV, exportPDF } from './services/export';
 
-type Page = 'dashboard' | 'fields' | 'survey' | 'map' | 'ai' | 'reports' | 'settings';
+type Page = 'dashboard' | 'fields' | 'rover' | 'survey' | 'map' | 'ai' | 'reports' | 'diagnostics' | 'settings';
 
 const nav = [
   { id: 'dashboard', label: 'Dashboard', icon: Home },
   { id: 'fields', label: 'Fields', icon: Leaf },
+  { id: 'rover', label: 'Rover', icon: Radio },
   { id: 'survey', label: 'Survey', icon: Activity },
   { id: 'map', label: 'Map', icon: Map },
   { id: 'ai', label: 'AI Analysis', icon: Bot },
   { id: 'reports', label: 'Reports', icon: FileBarChart },
+  { id: 'diagnostics', label: 'Diagnostics', icon: Cpu },
   { id: 'settings', label: 'Settings', icon: SettingsIcon }
 ] as const;
 
@@ -71,6 +78,8 @@ export default function App() {
   const readings = useLiveQuery(() => db.readings.orderBy('time').reverse().toArray(), []);
   const settings = useLiveQuery(() => db.settings.get('settings'), undefined as Settings | undefined);
   const notifications = useLiveQuery(() => db.notifications.orderBy('createdAt').reverse().limit(3).toArray(), []);
+  const roverConfig = useLiveQuery(() => db.roverConfigs.get('primary'), undefined as RoverConfig | undefined);
+  const [roverStatus, setRoverStatus] = useState<RoverStatus | undefined>();
   const [page, setPage] = useState<Page>('dashboard');
   const [currentUser, setCurrentUser] = useState<User | undefined>();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -91,6 +100,20 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', Boolean(settings?.darkMode));
   }, [settings?.darkMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const status = await getRoverStatus(roverConfig);
+      if (!cancelled) setRoverStatus(status);
+    };
+    load();
+    const interval = window.setInterval(load, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [roverConfig]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -152,13 +175,17 @@ export default function App() {
                   online={online}
                   setPage={setPage}
                   notifications={notifications}
+                  roverStatus={roverStatus}
+                  roverConfig={roverConfig}
                 />
               )}
               {page === 'fields' && <Fields fields={fields} />}
-              {page === 'survey' && <SurveyPage fields={fields} readings={readings} />}
+              {page === 'rover' && <RoverPage config={roverConfig} status={roverStatus} />}
+              {page === 'survey' && <SurveyPage fields={fields} readings={readings} roverConfig={roverConfig} />}
               {page === 'map' && <MapPage fields={fields} readings={readings} activeField={activeField} />}
               {page === 'ai' && <AIPage fields={fields} readings={readings} />}
               {page === 'reports' && <Reports fields={fields} surveys={surveys} readings={readings} />}
+              {page === 'diagnostics' && <DiagnosticsPage status={roverStatus} />}
               {page === 'settings' && <SettingsPage settings={settings} online={online} pending={pending} refreshPending={() => pendingSyncCount().then(setPending)} />}
             </motion.section>
           </AnimatePresence>
@@ -303,16 +330,16 @@ function ThemeToggle({ settings }: { settings?: Settings }) {
   );
 }
 
-function Dashboard({ todaySurveys, fields, avgHealth, latestSurvey, latestReadings, pending, online, setPage, notifications }: { todaySurveys: number; fields: Field[]; avgHealth: number; latestSurvey?: Survey; latestReadings: SensorReading[]; pending: number; online: boolean; setPage: (page: Page) => void; notifications: any[] }) {
+function Dashboard({ todaySurveys, fields, avgHealth, latestSurvey, latestReadings, pending, online, setPage, notifications, roverStatus, roverConfig }: { todaySurveys: number; fields: Field[]; avgHealth: number; latestSurvey?: Survey; latestReadings: SensorReading[]; pending: number; online: boolean; setPage: (page: Page) => void; notifications: any[]; roverStatus?: RoverStatus; roverConfig?: RoverConfig }) {
   const clock = useClock();
-  const battery = latestSurvey?.batteryEnd ?? 86;
+  const battery = roverStatus?.battery || latestSurvey?.batteryEnd || 0;
   return (
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={Activity} label="Today's Surveys" value={todaySurveys} sub="Captured locally" />
         <MetricCard icon={Leaf} label="Total Fields" value={fields.length} sub="Unlimited field registry" />
         <MetricCard icon={Gauge} label="Average Soil Health" value={`${avgHealth || 0}%`} sub="Across saved samples" />
-        <MetricCard icon={BatteryCharging} label="Battery Status" value={`${battery}%`} sub="Estimated rover charge" />
+        <MetricCard icon={BatteryCharging} label="Battery Status" value={battery ? `${battery}%` : 'Offline'} sub="Live when rover is connected" />
       </section>
       <section className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
         <div className="glass overflow-hidden rounded-[2rem] p-6">
@@ -320,14 +347,14 @@ function Dashboard({ todaySurveys, fields, avgHealth, latestSurvey, latestReadin
             <div>
               <p className="text-sm font-semibold text-primary">Rover Status</p>
               <h2 className="mt-1 text-3xl font-bold">Ready for autonomous soil survey</h2>
-              <p className="mt-2 max-w-2xl text-slate-600 dark:text-slate-300">Mock, WiFi, and Bluetooth modes are available. Samples are auto-saved to IndexedDB even when the network is unavailable.</p>
+              <p className="mt-2 max-w-2xl text-slate-600 dark:text-slate-300">Wi-Fi, Bluetooth-ready, and Offline modes are available. Samples are auto-saved to IndexedDB even when the network is unavailable.</p>
             </div>
-            <button className="primary-btn" onClick={() => setPage('survey')}>
-              <Play size={18} /> Quick Start Survey
+            <button className="primary-btn" onClick={() => setPage(roverStatus?.connected ? 'survey' : 'rover')}>
+              <Play size={18} /> {roverStatus?.connected ? 'Quick Start Survey' : 'Connect Rover'}
             </button>
           </div>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <StatusPill label="Connection" value="Mock mode" tone="green" />
+            <StatusPill label="Connected Rover" value={roverStatus?.connected ? roverConfig?.name || 'ESP32 Rover' : 'Offline Mode'} tone={roverStatus?.connected ? 'green' : 'amber'} />
             <StatusPill label="Last Sync" value={pending ? `${pending} pending` : 'Up to date'} tone={pending ? 'amber' : 'green'} />
             <StatusPill label="Local Time" value={clock.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} tone="neutral" />
           </div>
@@ -493,6 +520,212 @@ function FieldCard({ field }: { field: Field }) {
   );
 }
 
+type RoverFormState = {
+  name: string;
+  ipAddress: string;
+  connectionType: RoverConfig['connectionType'];
+  rememberDevice: boolean;
+  autoConnect: boolean;
+};
+
+function RoverPage({ config, status }: { config?: RoverConfig; status?: RoverStatus }) {
+  const [form, setForm] = useState<RoverFormState>({
+    name: config?.name ?? 'AgriSense Rover',
+    ipAddress: config?.ipAddress ?? '',
+    connectionType: config?.connectionType ?? 'WiFi',
+    rememberDevice: config?.rememberDevice ?? true,
+    autoConnect: config?.autoConnect ?? true
+  });
+
+  useEffect(() => {
+    setForm({
+      name: config?.name ?? 'AgriSense Rover',
+      ipAddress: config?.ipAddress ?? '',
+      connectionType: config?.connectionType ?? 'WiFi',
+      rememberDevice: config?.rememberDevice ?? true,
+      autoConnect: config?.autoConnect ?? true
+    });
+  }, [config?.updatedAt]);
+
+  const saveConnection = async (connected: boolean) => {
+    const now = new Date().toISOString();
+    await db.roverConfigs.put({
+      id: 'primary',
+      name: form.name.trim() || 'AgriSense Rover',
+      ipAddress: form.ipAddress.trim(),
+      connectionType: form.connectionType as RoverConfig['connectionType'],
+      rememberDevice: form.rememberDevice,
+      autoConnect: form.autoConnect,
+      connected,
+      lastConnectedAt: connected ? now : config?.lastConnectedAt,
+      updatedAt: now
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[.85fr_1.15fr]">
+        <div className="glass rounded-[2rem] p-5">
+          <div className="flex items-center gap-3">
+            <Radio className="text-primary" />
+            <h2 className="text-xl font-bold">Rover Connection</h2>
+          </div>
+          <div className="mt-5 space-y-4">
+            <label className="space-y-1">
+              <span className="label">Rover Name</span>
+              <input className="input w-full" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+            </label>
+            <label className="space-y-1">
+              <span className="label">IP Address</span>
+              <input className="input w-full" placeholder="192.168.4.1 or http://192.168.4.1" value={form.ipAddress} onChange={(event) => setForm({ ...form, ipAddress: event.target.value })} />
+            </label>
+            <label className="space-y-1">
+              <span className="label">Connection Type</span>
+              <select className="input w-full" value={form.connectionType} onChange={(event) => setForm({ ...form, connectionType: event.target.value as RoverConfig['connectionType'] })}>
+                <option value="WiFi">Wi-Fi</option>
+                <option value="Bluetooth">Bluetooth (Coming Soon)</option>
+                <option value="Offline">Offline Mode</option>
+              </select>
+            </label>
+            <Toggle label="Remember Device" value={form.rememberDevice} onChange={(value) => setForm({ ...form, rememberDevice: value })} />
+            <Toggle label="Auto Connect" value={form.autoConnect} onChange={(value) => setForm({ ...form, autoConnect: value })} />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button className="primary-btn" onClick={() => saveConnection(true)}>
+                <Signal size={18} /> Connect
+              </button>
+              <button className="secondary-btn" onClick={() => saveConnection(false)}>
+                <CloudOff size={18} /> Offline Mode
+              </button>
+            </div>
+          </div>
+        </div>
+        <RoverDashboard config={config} status={status} />
+      </div>
+      <div className="grid gap-6 xl:grid-cols-[1fr_.9fr]">
+        <LiveSensorPanel status={status} />
+        <ManualControls config={config} />
+      </div>
+    </div>
+  );
+}
+
+function DiagnosticsPage({ status }: { status?: RoverStatus }) {
+  const diagnostics = Object.entries(status?.diagnostics ?? {});
+  return (
+    <div className="glass rounded-[2rem] p-5">
+      <div className="flex items-center gap-3">
+        <Cpu className="text-primary" />
+        <h2 className="text-xl font-bold">Rover Diagnostics</h2>
+      </div>
+      <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">Runtime status and installed-sensor health are surfaced here for the connected rover.</p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {diagnostics.map(([label, value]) => (
+          <InfoBox key={label} label={label} value={value} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RoverDashboard({ config, status }: { config?: RoverConfig; status?: RoverStatus }) {
+  const items = [
+    ['Connection Status', status?.connected ? 'Connected' : 'Offline'],
+    ['Battery', status?.battery ? `${status.battery}%` : 'Unavailable'],
+    ['Firmware Version', status?.firmwareVersion ?? 'Unavailable'],
+    ['Current IP', status?.ipAddress ?? config?.ipAddress ?? 'Not configured'],
+    ['Wi-Fi Signal', status?.wifiSignal ? `${status.wifiSignal} dBm` : 'Unavailable'],
+    ['GPS Status', status?.gpsStatus ?? 'Offline'],
+    ['Motor Status', status?.motorStatus ?? 'Offline'],
+    ['Current Point', status?.currentSamplingPoint ?? 0]
+  ];
+  return (
+    <div className="glass rounded-[2rem] p-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-primary">Rover Dashboard</p>
+          <h2 className="text-2xl font-bold">{config?.name ?? 'No rover configured'}</h2>
+        </div>
+        <StatusPill label="Mode" value={config?.connectionType ?? 'Offline'} tone={status?.connected ? 'green' : 'amber'} />
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {items.map(([label, value]) => <InfoBox key={label} label={String(label)} value={String(value)} />)}
+      </div>
+    </div>
+  );
+}
+
+function LiveSensorPanel({ status }: { status?: RoverStatus }) {
+  const [reading, setReading] = useState<SensorReading | undefined>();
+  const config = useLiveQuery(() => db.roverConfigs.get('primary'), undefined as RoverConfig | undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const live = await getLiveReading('live', 'live', 1, config);
+      if (!cancelled) setReading(live);
+    };
+    load();
+    const interval = window.setInterval(load, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [config]);
+
+  const sensors = status?.sensors ?? { npk: true, moisture: true, gps: true, ph: false, ec: false, temperature: false };
+  return (
+    <div className="glass rounded-[2rem] p-5">
+      <div className="flex items-center gap-3">
+        <Gauge className="text-primary" />
+        <h2 className="text-xl font-bold">Live Sensor Data</h2>
+      </div>
+      <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">Installed sensors are detected from ESP32 status. Unavailable sensors are hidden or marked not installed.</p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {sensors.npk && reading && (
+          <>
+            <InfoBox label="Nitrogen" value={`${reading.nitrogen} mg/kg`} />
+            <InfoBox label="Phosphorus" value={`${reading.phosphorus} mg/kg`} />
+            <InfoBox label="Potassium" value={`${reading.potassium} mg/kg`} />
+          </>
+        )}
+        {sensors.moisture && reading && <InfoBox label="Moisture" value={`${reading.moisture}%`} />}
+        {sensors.gps && reading && <InfoBox label="GPS" value={`${reading.gps.lat.toFixed(5)}, ${reading.gps.lng.toFixed(5)}`} />}
+        {!sensors.ph && <InfoBox label="pH" value="Not Installed" />}
+        {!sensors.ec && <InfoBox label="EC" value="Not Installed" />}
+        {!sensors.temperature && <InfoBox label="Temperature" value="Not Installed" />}
+      </div>
+    </div>
+  );
+}
+
+function ManualControls({ config }: { config?: RoverConfig }) {
+  const [movement, setMovement] = useState('Idle');
+  const command = async (value: 'forward' | 'backward' | 'left' | 'right' | 'stop' | 'home') => {
+    const response = await sendManualCommand(config, value);
+    setMovement(String((response as any).movementStatus ?? value));
+  };
+  return (
+    <div className="glass rounded-[2rem] p-5">
+      <div className="flex items-center gap-3">
+        <Gamepad2 className="text-primary" />
+        <h2 className="text-xl font-bold">Manual Navigation</h2>
+      </div>
+      <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">Movement status: <span className="font-bold text-primary">{movement}</span></p>
+      <div className="mx-auto mt-6 grid max-w-sm grid-cols-3 gap-3">
+        <span />
+        <button className="secondary-btn justify-center" onClick={() => command('forward')}>Forward</button>
+        <span />
+        <button className="secondary-btn justify-center" onClick={() => command('left')}>Left</button>
+        <button className="danger-btn justify-center" onClick={() => command('stop')}>Stop</button>
+        <button className="secondary-btn justify-center" onClick={() => command('right')}>Right</button>
+        <button className="secondary-btn justify-center" onClick={() => command('home')}>Home</button>
+        <button className="secondary-btn justify-center" onClick={() => command('backward')}>Backward</button>
+        <span />
+      </div>
+    </div>
+  );
+}
+
 function InfoBox({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-2xl bg-white/60 p-3 dark:bg-white/10">
@@ -502,10 +735,10 @@ function InfoBox({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function SurveyPage({ fields, readings }: { fields: Field[]; readings: SensorReading[] }) {
+function SurveyPage({ fields, readings, roverConfig }: { fields: Field[]; readings: SensorReading[]; roverConfig?: RoverConfig }) {
   const [fieldId, setFieldId] = useState(fields[0]?.id ?? '');
   const [survey, setSurvey] = useState<Survey | undefined>();
-  const [connection, setConnection] = useState<'WiFi' | 'Bluetooth' | 'Mock'>('Mock');
+  const [connection, setConnection] = useState<RoverConfig['connectionType']>(roverConfig?.connectionType ?? 'Offline');
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const field = fields.find((item) => item.id === fieldId) ?? fields[0];
@@ -526,7 +759,7 @@ function SurveyPage({ fields, readings }: { fields: Field[]; readings: SensorRea
         setRunning(false);
         return;
       }
-      const reading = await getLiveReading(field.id, survey.id, currentCount + 1);
+      const reading = await getLiveReading(field.id, survey.id, currentCount + 1, roverConfig);
       await db.readings.add(reading);
       await db.surveys.update(survey.id, { sampleCount: currentCount + 1, synced: false });
     }, 3000);
@@ -537,6 +770,7 @@ function SurveyPage({ fields, readings }: { fields: Field[]; readings: SensorRea
     if (!field) return;
     const created: Survey = { id: uid('survey'), fieldId: field.id, status: 'running', startedAt: new Date().toISOString(), sampleCount: 0, batteryStart: 96, connection, synced: false };
     await db.surveys.add(created);
+    await startRoverSurvey(roverConfig);
     setSurvey(created);
     setElapsed(0);
     setRunning(true);
@@ -544,16 +778,19 @@ function SurveyPage({ fields, readings }: { fields: Field[]; readings: SensorRea
   const pause = async () => {
     if (!survey) return;
     setRunning(false);
+    await pauseRoverSurvey(roverConfig);
     await db.surveys.update(survey.id, { status: 'paused' });
   };
   const resume = async () => {
     if (!survey) return;
     setRunning(true);
+    await resumeRoverSurvey(roverConfig);
     await db.surveys.update(survey.id, { status: 'running' });
   };
   const stop = async () => {
     if (!survey) return;
     setRunning(false);
+    await stopRoverSurvey(roverConfig);
     await db.surveys.update(survey.id, { status: 'stopped', endedAt: new Date().toISOString(), batteryEnd: Math.max(20, 96 - surveyReadings.length) });
   };
 
@@ -571,7 +808,7 @@ function SurveyPage({ fields, readings }: { fields: Field[]; readings: SensorRea
           </select>
           <label className="label">Connect Rover</label>
           <div className="grid grid-cols-3 gap-2">
-            {(['WiFi', 'Bluetooth', 'Mock'] as const).map((item) => (
+            {(['WiFi', 'Bluetooth', 'Offline'] as const).map((item) => (
               <button key={item} className={`segmented ${connection === item ? 'segmented-active' : ''}`} onClick={() => setConnection(item)}>{item}</button>
             ))}
           </div>
@@ -812,9 +1049,6 @@ function AIPage({ fields, readings }: { fields: Field[]; readings: SensorReading
     phosphorus: last?.phosphorus ?? 32,
     potassium: last?.potassium ?? 118,
     moisture: last?.moisture ?? 34,
-    temperature: last?.temperature ?? 27,
-    ph: last?.ph ?? 6.5,
-    ec: last?.ec ?? 1.2,
     crop: fields[0]?.crop ?? ''
   });
   const result = useMemo(() => generateAIRecommendation(input), [input]);
@@ -823,7 +1057,7 @@ function AIPage({ fields, readings }: { fields: Field[]; readings: SensorReading
       <div className="glass rounded-[2rem] p-5">
         <h2 className="text-xl font-bold">AI Soil Analysis</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {(['nitrogen', 'phosphorus', 'potassium', 'moisture', 'temperature', 'ph', 'ec'] as const).map((key) => (
+          {(['nitrogen', 'phosphorus', 'potassium', 'moisture'] as const).map((key) => (
             <label key={key} className="space-y-1">
               <span className="label capitalize">{key}</span>
               <input className="input w-full" type="number" step="0.1" value={input[key]} onChange={(event) => setInput({ ...input, [key]: Number(event.target.value) })} />
@@ -837,7 +1071,7 @@ function AIPage({ fields, readings }: { fields: Field[]; readings: SensorReading
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <ResultCard title="Soil Health Score" value={`${result.soilHealthScore}%`} body="Rule-based local inference. A REST AI endpoint can replace this when available." icon={Gauge} />
-        <ResultCard title="Crop Suitability" value={result.suitability} body="Based on nutrient balance, moisture, pH, and conductivity." icon={ShieldCheck} />
+        <ResultCard title="Crop Suitability" value={result.suitability} body="Based on nutrient balance and moisture only." icon={ShieldCheck} />
         <ResultCard title="Fertilizer Recommendation" value={result.fertilizer} body="Generated offline from agronomic heuristics." icon={Leaf} />
         <ResultCard title="Nutrient Deficiency" value={result.deficiency} body="Use this as a field advisory starting point." icon={Bot} />
       </div>

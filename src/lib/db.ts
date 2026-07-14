@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Field, NotificationItem, SensorReading, Settings, Survey, User } from '../types';
+import type { Field, NotificationItem, RoverConfig, SensorReading, Settings, Survey, User } from '../types';
 import { uid } from './calculations';
 
 class AgriSenseDB extends Dexie {
@@ -9,6 +9,7 @@ class AgriSenseDB extends Dexie {
   readings!: Table<SensorReading, string>;
   settings!: Table<Settings, string>;
   notifications!: Table<NotificationItem, string>;
+  roverConfigs!: Table<RoverConfig, string>;
 
   constructor() {
     super('agrisense-ai-rover');
@@ -19,6 +20,15 @@ class AgriSenseDB extends Dexie {
       readings: 'id, fieldId, surveyId, pointIndex, synced, time',
       settings: 'id',
       notifications: 'id, createdAt, type'
+    });
+    this.version(2).stores({
+      users: 'id, role',
+      fields: 'id, owner, crop, synced, updatedAt',
+      surveys: 'id, fieldId, status, synced, startedAt',
+      readings: 'id, fieldId, surveyId, pointIndex, synced, time',
+      settings: 'id',
+      notifications: 'id, createdAt, type',
+      roverConfigs: 'id, connectionType, connected, updatedAt'
     });
   }
 }
@@ -37,6 +47,8 @@ export async function initializeDatabase() {
 
   const settings = await db.settings.get('settings');
   if (!settings) {
-    await db.settings.put({ id: 'settings', samplingDistance: 12, units: 'Metric', darkMode: false, offlineSync: true, language: 'English' });
+    await db.settings.put({ id: 'settings', samplingDistance: 12, units: 'Metric', darkMode: false, offlineSync: true, autoSave: true, language: 'English' });
+  } else if (settings.autoSave === undefined) {
+    await db.settings.update('settings', { autoSave: true });
   }
 }
