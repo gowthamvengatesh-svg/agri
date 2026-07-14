@@ -815,7 +815,7 @@ function AIPage({ fields, readings }: { fields: Field[]; readings: SensorReading
     temperature: last?.temperature ?? 27,
     ph: last?.ph ?? 6.5,
     ec: last?.ec ?? 1.2,
-    crop: fields[0]?.crop ?? 'Rice'
+    crop: fields[0]?.crop ?? ''
   });
   const result = useMemo(() => generateAIRecommendation(input), [input]);
   return (

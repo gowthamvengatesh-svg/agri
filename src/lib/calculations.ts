@@ -40,7 +40,8 @@ export function generateAIRecommendation(input: AIInput): AIResult {
     lowP ? 'add phosphorus-rich basal fertilizer' : 'phosphorus is adequate',
     lowK ? 'supplement potash before irrigation' : 'potassium reserve is stable'
   ].join(', ');
-  const suitability = score > 78 ? `${input.crop} suitability is high` : score > 58 ? `${input.crop} suitability is moderate with corrections` : `${input.crop} needs soil recovery before scale-up`;
+  const crop = input.crop.trim() || 'Selected crop';
+  const suitability = score > 78 ? `${crop} suitability is high` : score > 58 ? `${crop} suitability is moderate with corrections` : `${crop} needs soil recovery before scale-up`;
   const deficiency = [lowN && 'Nitrogen', lowP && 'Phosphorus', lowK && 'Potassium', input.ph < 5.8 && 'Acidic pH', input.moisture < 24 && 'Low moisture']
     .filter(Boolean)
     .join(', ') || 'No major deficiency detected';

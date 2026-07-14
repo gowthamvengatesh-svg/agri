@@ -2,9 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles.css';
 import App from './App';
-import { seedDatabase } from './lib/db';
+import { initializeDatabase } from './lib/db';
 
-seedDatabase().finally(() => {
+initializeDatabase().finally(() => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <App />

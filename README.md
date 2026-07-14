@@ -101,6 +101,8 @@ Data is stored locally in IndexedDB:
 
 The service worker caches the app shell and static assets so the UI remains available offline. Survey data is auto-saved locally. When the device comes back online, the Settings page shows pending sync records and allows manual sync.
 
+On first run, the app creates only local role profiles and default settings. It does not create demo fields, demo surveys, or demo readings.
+
 Cloud synchronization is currently implemented as a local placeholder and can be connected to MongoDB later.
 
 ## Mock Rover API
