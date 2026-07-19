@@ -17,6 +17,7 @@ import {
   Gauge,
   Home,
   Leaf,
+  LogOut,
   Map,
   Menu,
   Moon,
@@ -32,6 +33,7 @@ import {
   Square,
   Sun,
   Trash2,
+  User as UserIcon,
   Upload
 } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
@@ -52,10 +54,13 @@ import type { AIInput, Field, Role, RoverConfig, RoverStatus, SensorReading, Set
 import { computeField, generateAIRecommendation, uid } from './lib/calculations';
 import { db } from './lib/db';
 import { useClock, useLiveQuery, useOnlineStatus } from './lib/hooks';
-import { getLiveReading, getRoverStatus, pauseRoverSurvey, resumeRoverSurvey, sendManualCommand, startRoverSurvey, stopRoverSurvey } from './services/rover';
+import { getLiveReading, getRoverStatus } from './services/rover';
 import { pendingSyncCount, syncNow } from './services/sync';
 import { exportBackup, restoreBackup } from './services/backup';
 import { exportCSV, exportPDF } from './services/export';
+import { useSocket } from './hooks/useSocket';
+import { useAuth } from './hooks/useAuth';
+import * as rover from './services/rover';
 
 type Page = 'dashboard' | 'fields' | 'rover' | 'survey' | 'map' | 'ai' | 'reports' | 'diagnostics' | 'settings';
 
@@ -104,7 +109,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const status = await getRoverStatus(roverConfig);
+      const status = await getRoverStatus(roverConfig?.id || 'primary');
       if (!cancelled) setRoverStatus(status);
     };
     load();
@@ -131,6 +136,11 @@ export default function App() {
   const todaySurveys = surveys.filter((survey) => new Date(survey.startedAt).toDateString() === new Date().toDateString()).length;
   const latestSurvey = surveys[0];
 
+  const handleLogout = () => {
+    localStorage.removeItem('agrisense-user-id');
+    setCurrentUser(undefined);
+  };
+
   if (!users.length) return <LoadingScreen />;
   if (!currentUser) return <LoginScreen users={users} onLogin={(user) => {
     localStorage.setItem('agrisense-user-id', user.id);
@@ -138,9 +148,9 @@ export default function App() {
   }} settings={settings} />;
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#f5faf5] text-slate-950 transition-colors dark:bg-[#08120b] dark:text-white">
-      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_15%_10%,rgba(102,187,106,.26),transparent_28%),radial-gradient(circle_at_88%_2%,rgba(46,125,50,.20),transparent_26%),linear-gradient(135deg,rgba(255,255,255,.94),rgba(236,249,236,.9))] dark:bg-[radial-gradient(circle_at_15%_10%,rgba(102,187,106,.14),transparent_28%),radial-gradient(circle_at_88%_2%,rgba(46,125,50,.18),transparent_26%),linear-gradient(135deg,#08120b,#132016)]" />
-      <Sidebar page={page} setPage={setPage} open={menuOpen} close={() => setMenuOpen(false)} />
+    <div className="min-h-screen overflow-hidden bg-[#f5faf5] text-slate-950 transition-colors dark:bg-[#0a0d0b] dark:text-white">
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_15%_10%,rgba(102,187,106,.26),transparent_28%),radial-gradient(circle_at_88%_2%,rgba(46,125,50,.20),transparent_26%),linear-gradient(135deg,rgba(255,255,255,.94),rgba(236,249,236,.9))] dark:bg-[radial-gradient(circle_at_15%_10%,rgba(102,187,106,.14),transparent_28%),radial-gradient(circle_at_88%_2%,rgba(46,125,50,.18),transparent_26%),linear-gradient(135deg,#0a0d0b,#131916)]" />
+      <Sidebar page={page} setPage={setPage} open={menuOpen} close={() => setMenuOpen(false)} user={currentUser} onLogout={handleLogout} />
       <main className="min-h-screen lg:pl-72">
         <Topbar
           page={page}
@@ -150,6 +160,7 @@ export default function App() {
             localStorage.setItem('agrisense-user-id', user.id);
             setCurrentUser(user);
           }}
+          onLogout={handleLogout}
           online={online}
           pending={pending}
           openMenu={() => setMenuOpen(true)}
@@ -166,6 +177,8 @@ export default function App() {
             >
               {page === 'dashboard' && (
                 <Dashboard
+                  user={currentUser}
+                  onLogout={handleLogout}
                   todaySurveys={todaySurveys}
                   fields={fields}
                   avgHealth={avgHealth}
@@ -200,8 +213,8 @@ function LoginScreen({ users, onLogin, settings }: { users: User[]; onLogin: (us
     document.documentElement.classList.toggle('dark', Boolean(settings?.darkMode));
   }, [settings?.darkMode]);
   return (
-    <div className="min-h-screen bg-[#f5faf5] px-4 py-10 text-slate-950 dark:bg-[#08120b] dark:text-white">
-      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_10%,rgba(102,187,106,.28),transparent_28%),linear-gradient(135deg,rgba(255,255,255,.95),rgba(230,247,231,.92))] dark:bg-[radial-gradient(circle_at_20%_10%,rgba(102,187,106,.14),transparent_28%),linear-gradient(135deg,#08120b,#132016)]" />
+    <div className="min-h-screen bg-[#f5faf5] px-4 py-10 text-slate-950 dark:bg-[#0a0d0b] dark:text-white">
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_10%,rgba(102,187,106,.28),transparent_28%),linear-gradient(135deg,rgba(255,255,255,.95),rgba(230,247,231,.92))] dark:bg-[radial-gradient(circle_at_20%_10%,rgba(102,187,106,.14),transparent_28%),linear-gradient(135deg,#0a0d0b,#131916)]" />
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-5xl items-center justify-center">
         <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="glass w-full rounded-[2rem] p-6 sm:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -233,7 +246,7 @@ function LoginScreen({ users, onLogin, settings }: { users: User[]; onLogin: (us
 
 function LoadingScreen() {
   return (
-    <div className="grid min-h-screen place-items-center bg-[#f5faf5] dark:bg-[#08120b]">
+    <div className="grid min-h-screen place-items-center bg-[#f5faf5] dark:bg-[#0a0d0b]">
       <motion.div initial={{ scale: 0.94, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="glass flex items-center gap-3 rounded-3xl px-6 py-4">
         <Leaf className="text-primary" />
         <span className="font-semibold">Loading AgriSense offline workspace...</span>
@@ -242,7 +255,7 @@ function LoadingScreen() {
   );
 }
 
-function Sidebar({ page, setPage, open, close }: { page: Page; setPage: (page: Page) => void; open: boolean; close: () => void }) {
+function Sidebar({ page, setPage, open, close, user, onLogout }: { page: Page; setPage: (page: Page) => void; open: boolean; close: () => void; user: User; onLogout: () => void }) {
   return (
     <>
       <button aria-label="Close navigation" className={`fixed inset-0 z-30 bg-black/30 lg:hidden ${open ? 'block' : 'hidden'}`} onClick={close} />
@@ -277,17 +290,28 @@ function Sidebar({ page, setPage, open, close }: { page: Page; setPage: (page: P
           })}
         </nav>
         <div className="absolute bottom-4 left-4 right-4 rounded-3xl bg-white/70 p-4 text-sm text-slate-600 shadow-sm dark:bg-white/10 dark:text-slate-300">
-          <p className="font-semibold text-slate-900 dark:text-white">Offline-first</p>
-          <p>All fields, samples, reports, and settings are stored locally in IndexedDB.</p>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <div className="grid size-7 place-items-center rounded-lg bg-primary/20 text-primary font-bold text-xs">
+                <UserIcon size={14} />
+              </div>
+              <span className="font-bold text-slate-900 dark:text-white text-xs">{user.name}</span>
+            </div>
+            <button onClick={onLogout} title="Logout" className="text-red-500 hover:text-red-600 font-bold text-xs flex items-center gap-1">
+              <LogOut size={13} />
+              <span>Logout</span>
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-300">Role: {user.role} · Offline workspace</p>
         </div>
       </aside>
     </>
   );
 }
 
-function Topbar({ page, user, users, setUser, online, pending, openMenu, settings }: { page: Page; user: User; users: User[]; setUser: (user: User) => void; online: boolean; pending: number; openMenu: () => void; settings?: Settings }) {
+function Topbar({ page, user, users, setUser, onLogout, online, pending, openMenu, settings }: { page: Page; user: User; users: User[]; setUser: (user: User) => void; onLogout: () => void; online: boolean; pending: number; openMenu: () => void; settings?: Settings }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-white/40 bg-[#f5faf5]/75 backdrop-blur-2xl dark:border-white/10 dark:bg-[#08120b]/75">
+    <header className="sticky top-0 z-20 border-b border-white/40 bg-[#f5faf5]/75 backdrop-blur-2xl dark:border-white/10 dark:bg-[#0a0d0b]/75">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3">
           <button aria-label="Open navigation" onClick={openMenu} className="icon-btn lg:hidden">
@@ -304,14 +328,37 @@ function Topbar({ page, user, users, setUser, online, pending, openMenu, setting
             {online ? 'Online' : 'Offline'}
             {pending > 0 && <span className="rounded-full bg-white px-2 py-0.5 text-xs dark:bg-black/30">{pending} pending</span>}
           </div>
-          <select aria-label="Current role" className="input hidden max-w-44 sm:block" value={user.id} onChange={(event) => setUser(users.find((item) => item.id === event.target.value) ?? user)}>
+
+          {/* User Button */}
+          <div className="hidden sm:flex items-center gap-2.5 rounded-2xl bg-white/70 px-3 py-1.5 shadow-sm dark:bg-white/10 dark:border dark:border-white/10">
+            <div className="grid size-8 place-items-center rounded-xl bg-primary/20 text-primary font-bold">
+              <UserIcon size={16} />
+            </div>
+            <div className="text-left text-xs">
+              <p className="font-bold leading-tight text-slate-900 dark:text-white">{user.name}</p>
+              <p className="text-[10px] text-slate-500 dark:text-emerald-400 font-semibold leading-none">{user.role}</p>
+            </div>
+          </div>
+
+          <select aria-label="Current role" className="input hidden max-w-44 md:block" value={user.id} onChange={(event) => setUser(users.find((item) => item.id === event.target.value) ?? user)}>
             {users.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.role} - {item.name}
               </option>
             ))}
           </select>
+
           <ThemeToggle settings={settings} />
+
+          {/* Logout Button */}
+          <button 
+            title="Logout / Switch Profile"
+            className="danger-btn px-3"
+            onClick={onLogout}
+          >
+            <LogOut size={17} />
+            <span className="hidden md:inline text-xs">Logout</span>
+          </button>
         </div>
       </div>
     </header>
@@ -330,37 +377,117 @@ function ThemeToggle({ settings }: { settings?: Settings }) {
   );
 }
 
-function Dashboard({ todaySurveys, fields, avgHealth, latestSurvey, latestReadings, pending, online, setPage, notifications, roverStatus, roverConfig }: { todaySurveys: number; fields: Field[]; avgHealth: number; latestSurvey?: Survey; latestReadings: SensorReading[]; pending: number; online: boolean; setPage: (page: Page) => void; notifications: any[]; roverStatus?: RoverStatus; roverConfig?: RoverConfig }) {
+function Dashboard({ user, onLogout, todaySurveys, fields, avgHealth, latestSurvey, latestReadings, pending, online, setPage, notifications, roverStatus, roverConfig }: { user: User; onLogout: () => void; todaySurveys: number; fields: Field[]; avgHealth: number; latestSurvey?: Survey; latestReadings: SensorReading[]; pending: number; online: boolean; setPage: (page: Page) => void; notifications: any[]; roverStatus?: RoverStatus; roverConfig?: RoverConfig }) {
   const clock = useClock();
-  const battery = roverStatus?.battery || latestSurvey?.batteryEnd || 0;
+  const [latestReading, setLatestReading] = useState<SensorReading | undefined>();
+  const [activeSurvey, setActiveSurvey] = useState<Survey | undefined>();
+  
+  // Real-time Socket.IO connection
+  const { connected: socketConnected } = useSocket({
+    autoConnect: true,
+    onSensorReading: (reading) => {
+      setLatestReading(reading);
+    },
+    onSurveyStarted: (data) => {
+      setActiveSurvey({ id: data.surveyId, fieldId: data.fieldId, status: 'running', startedAt: new Date().toISOString(), sampleCount: 0, batteryStart: 96, connection: 'WiFi', synced: true });
+    },
+    onSurveyStopped: (data) => {
+      setActiveSurvey(prev => prev ? { ...prev, status: 'completed', endedAt: new Date().toISOString() } : undefined);
+    }
+  });
+
+  // Use real-time reading or latest from database
+  const displayReading = latestReading || latestReadings[0];
+  const battery = latestReading?.battery || roverStatus?.battery || latestSurvey?.batteryEnd || 0;
+  
+  // Determine connection status
+  const isConnected = socketConnected && roverStatus?.connected;
+  const connectionStatus = socketConnected ? (roverStatus?.connected ? 'Connected' : 'Waiting for Rover') : 'Offline';
+  const connectionTone = isConnected ? 'green' : socketConnected ? 'amber' : 'neutral';
+
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={Activity} label="Today's Surveys" value={todaySurveys} sub="Captured locally" />
-        <MetricCard icon={Leaf} label="Total Fields" value={fields.length} sub="Unlimited field registry" />
-        <MetricCard icon={Gauge} label="Average Soil Health" value={`${avgHealth || 0}%`} sub="Across saved samples" />
-        <MetricCard icon={BatteryCharging} label="Battery Status" value={battery ? `${battery}%` : 'Offline'} sub="Live when rover is connected" />
+      {/* Dashboard User Profile Banner */}
+      <section className="glass flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-[2rem] p-5">
+        <div className="flex items-center gap-4">
+          <div className="grid size-14 place-items-center rounded-3xl bg-primary text-white shadow-lg shadow-primary/25">
+            <UserIcon size={26} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{user.name}</h2>
+              <span className="rounded-full bg-primary/15 px-3 py-0.5 text-xs font-extrabold text-primary uppercase tracking-wider">
+                {user.role}
+              </span>
+            </div>
+            <p className="text-sm text-slate-500 dark:text-slate-300">Active local session · Full workspace privileges</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button className="secondary-btn text-xs" onClick={() => setPage('settings')}>
+            <SettingsIcon size={16} /> User Settings
+          </button>
+          <button className="danger-btn text-xs" onClick={onLogout}>
+            <LogOut size={16} /> Logout
+          </button>
+        </div>
       </section>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard icon={Activity} label="Active Surveys" value={activeSurvey?.status === 'running' ? '1 Running' : todaySurveys} sub={activeSurvey ? 'Survey in progress' : 'Captured today'} />
+        <MetricCard icon={Leaf} label="Total Fields" value={fields.length} sub="In your workspace" />
+        <MetricCard icon={Gauge} label={displayReading ? 'Soil Health' : 'Average Health'} value={`${displayReading?.soilHealth || avgHealth || 0}%`} sub={displayReading ? 'Live reading' : 'Across samples'} />
+        <MetricCard icon={BatteryCharging} label="Battery Status" value={battery ? `${battery}%` : 'Offline'} sub={isConnected ? 'Live from rover' : 'Last known'} />
+      </section>
+
       <section className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
         <div className="glass overflow-hidden rounded-[2rem] p-6">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <p className="text-sm font-semibold text-primary">Rover Status</p>
-              <h2 className="mt-1 text-3xl font-bold">Ready for autonomous soil survey</h2>
-              <p className="mt-2 max-w-2xl text-slate-600 dark:text-slate-300">Wi-Fi, Bluetooth-ready, and Offline modes are available. Samples are auto-saved to IndexedDB even when the network is unavailable.</p>
+              <p className="text-sm font-semibold text-primary">{isConnected ? '🟢 Rover Connected' : '🔴 Offline'}</p>
+              <h2 className="mt-1 text-3xl font-bold">{isConnected ? 'Ready for autonomous soil survey' : 'Connection awaiting'}</h2>
+              <p className="mt-2 max-w-2xl text-slate-600 dark:text-slate-300">
+                {isConnected 
+                  ? 'WiFi connected. Samples are synced to cloud in real-time.' 
+                  : 'Data remains usable without connection. Samples sync when network returns.'}
+              </p>
             </div>
-            <button className="primary-btn" onClick={() => setPage(roverStatus?.connected ? 'survey' : 'rover')}>
-              <Play size={18} /> {roverStatus?.connected ? 'Quick Start Survey' : 'Connect Rover'}
+            <button className="primary-btn" onClick={() => setPage(isConnected ? 'survey' : 'rover')}>
+              <Play size={18} /> {isConnected ? 'Quick Start Survey' : 'Connect Rover'}
             </button>
           </div>
+
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <StatusPill label="Connected Rover" value={roverStatus?.connected ? roverConfig?.name || 'ESP32 Rover' : 'Offline Mode'} tone={roverStatus?.connected ? 'green' : 'amber'} />
-            <StatusPill label="Last Sync" value={pending ? `${pending} pending` : 'Up to date'} tone={pending ? 'amber' : 'green'} />
+            <StatusPill label="Rover Status" value={connectionStatus} tone={connectionTone} />
+            <StatusPill label="Sync Status" value={pending ? `${pending} pending` : 'Up to date'} tone={pending ? 'amber' : 'green'} />
             <StatusPill label="Local Time" value={clock.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} tone="neutral" />
           </div>
+
+          {/* Live Sensor Grid */}
+          {displayReading && (
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl bg-white/65 p-4 dark:bg-white/10">
+                <p className="text-xs text-slate-500 dark:text-slate-300">Nitrogen</p>
+                <p className="mt-1 text-2xl font-bold">{displayReading.nitrogen}<span className="ml-1 text-sm font-medium text-slate-500">mg/kg</span></p>
+              </div>
+              <div className="rounded-2xl bg-white/65 p-4 dark:bg-white/10">
+                <p className="text-xs text-slate-500 dark:text-slate-300">Phosphorus</p>
+                <p className="mt-1 text-2xl font-bold">{displayReading.phosphorus}<span className="ml-1 text-sm font-medium text-slate-500">mg/kg</span></p>
+              </div>
+              <div className="rounded-2xl bg-white/65 p-4 dark:bg-white/10">
+                <p className="text-xs text-slate-500 dark:text-slate-300">Potassium</p>
+                <p className="mt-1 text-2xl font-bold">{displayReading.potassium}<span className="ml-1 text-sm font-medium text-slate-500">mg/kg</span></p>
+              </div>
+              <div className="rounded-2xl bg-white/65 p-4 dark:bg-white/10">
+                <p className="text-xs text-slate-500 dark:text-slate-300">Moisture</p>
+                <p className="mt-1 text-2xl font-bold">{displayReading.moisture}<span className="ml-1 text-sm font-medium text-slate-500">%</span></p>
+              </div>
+            </div>
+          )}
+
+          {/* Chart */}
           <div className="mt-7 h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={latestReadings}>
+              <AreaChart data={latestReadings.slice(-20)}>
                 <defs>
                   <linearGradient id="health" x1="0" x2="0" y1="0" y2="1">
                     <stop offset="5%" stopColor="#66BB6A" stopOpacity={0.5} />
@@ -375,22 +502,54 @@ function Dashboard({ todaySurveys, fields, avgHealth, latestSurvey, latestReadin
               </AreaChart>
             </ResponsiveContainer>
           </div>
+          {displayReading && (
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-300">
+              📍 GPS {displayReading.gps.lat.toFixed(5)}, {displayReading.gps.lng.toFixed(5)} · 🕐 {new Date(displayReading.time).toLocaleTimeString()}
+            </p>
+          )}
         </div>
+
         <div className="space-y-4">
+          {/* Network Status */}
           <div className="glass rounded-[2rem] p-6">
-            <p className="text-sm font-semibold text-primary">Network</p>
-            <div className="mt-4 flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-bold">{online ? 'Cloud available' : 'Offline protected'}</p>
-                <p className="text-sm text-slate-500 dark:text-slate-300">Data remains usable without internet.</p>
+            <p className="text-sm font-semibold text-primary">Network & Socket</p>
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">{online ? 'Cloud' : 'Offline'}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-300">{online ? 'Connected' : 'Protected'}</p>
+                </div>
+                {online ? <Cloud className="text-primary" size={28} /> : <CloudOff className="text-amber-500" size={28} />}
               </div>
-              {online ? <Cloud className="text-primary" size={34} /> : <CloudOff className="text-amber-500" size={34} />}
+              <div className="border-t border-white/20 pt-3 dark:border-white/10">
+                <div className="flex items-center gap-2">
+                  <div className={`size-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
+                  <span className="text-sm font-medium">{socketConnected ? 'WebSocket Connected' : 'Reconnecting...'}</span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-300">Real-time updates {socketConnected ? '✓' : '⏳'}</p>
+              </div>
             </div>
           </div>
+
+          {/* Alerts & Notifications */}
           <div className="glass rounded-[2rem] p-6">
-            <p className="text-sm font-semibold text-primary">Notifications</p>
-            <div className="mt-4 space-y-3">
-              {notifications.length ? notifications.map((item) => <NotificationRow key={item.id} item={item} />) : <p className="text-sm text-slate-500 dark:text-slate-300">No alerts. The rover workspace is calm.</p>}
+            <p className="text-sm font-semibold text-primary">Alerts & Notifications</p>
+            <div className="mt-4 space-y-3 max-h-64 overflow-y-auto">
+              {notifications.length > 0 ? (
+                notifications.map((item) => <NotificationRow key={item.id} item={item} />)
+              ) : (
+                <p className="text-sm text-slate-500 dark:text-slate-300">✓ No alerts. The rover workspace is calm.</p>
+              )}
+              {battery < 25 && (
+                <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+                  ⚠️ Battery low: {battery}%. Charge rover soon.
+                </div>
+              )}
+              {activeSurvey?.status === 'running' && (
+                <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+                  🔄 Survey running: {activeSurvey.fieldId}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -699,29 +858,138 @@ function LiveSensorPanel({ status }: { status?: RoverStatus }) {
 }
 
 function ManualControls({ config }: { config?: RoverConfig }) {
-  const [movement, setMovement] = useState('Idle');
-  const command = async (value: 'forward' | 'backward' | 'left' | 'right' | 'stop' | 'home') => {
-    const response = await sendManualCommand(config, value);
-    setMovement(String((response as any).movementStatus ?? value));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [roverStatus, setRoverStatus] = useState<RoverStatus | undefined>();
+  
+  // Subscribe to real-time rover status
+  const { connected: socketConnected } = useSocket({
+    autoConnect: true,
+    onRoverStatus: (status) => {
+      setRoverStatus(status);
+    }
+  });
+
+  const handleCommand = async (command: 'forward' | 'backward' | 'left' | 'right' | 'stop' | 'home', duration: number = 3) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      await rover.moveManual({
+        roverId: 'primary',
+        command,
+        duration
+      });
+      
+      console.log(`✓ ${command} command sent successfully`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `Failed to execute ${command}`;
+      setError(message);
+      console.error(`${command} error:`, err);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const isConnected = socketConnected && roverStatus?.connected;
+
   return (
     <div className="glass rounded-[2rem] p-5">
       <div className="flex items-center gap-3">
         <Gamepad2 className="text-primary" />
         <h2 className="text-xl font-bold">Manual Navigation</h2>
       </div>
-      <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">Movement status: <span className="font-bold text-primary">{movement}</span></p>
+      
+      {error && (
+        <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+          ⚠️ {error}
+        </div>
+      )}
+
+      <div className="mt-3 flex items-center gap-2">
+        <div className={`size-2.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
+        <span className="text-sm font-medium">
+          {isConnected ? '🟢 Rover Connected' : socketConnected ? '🟡 Rover Offline' : '🔴 No Connection'}
+        </span>
+      </div>
+
       <div className="mx-auto mt-6 grid max-w-sm grid-cols-3 gap-3">
         <span />
-        <button className="secondary-btn justify-center" onClick={() => command('forward')}>Forward</button>
+        <button 
+          className="secondary-btn justify-center" 
+          onClick={() => handleCommand('forward', 5)}
+          disabled={loading || !isConnected}
+        >
+          ⬆️ Forward
+        </button>
         <span />
-        <button className="secondary-btn justify-center" onClick={() => command('left')}>Left</button>
-        <button className="danger-btn justify-center" onClick={() => command('stop')}>Stop</button>
-        <button className="secondary-btn justify-center" onClick={() => command('right')}>Right</button>
-        <button className="secondary-btn justify-center" onClick={() => command('home')}>Home</button>
-        <button className="secondary-btn justify-center" onClick={() => command('backward')}>Backward</button>
+        
+        <button 
+          className="secondary-btn justify-center" 
+          onClick={() => handleCommand('left', 3)}
+          disabled={loading || !isConnected}
+        >
+          ⬅️ Left
+        </button>
+        <button 
+          className="danger-btn justify-center" 
+          onClick={() => handleCommand('stop', 1)}
+          disabled={loading || !isConnected}
+        >
+          ⏹️ Stop
+        </button>
+        <button 
+          className="secondary-btn justify-center" 
+          onClick={() => handleCommand('right', 3)}
+          disabled={loading || !isConnected}
+        >
+          ➡️ Right
+        </button>
+        
+        <button 
+          className="secondary-btn justify-center" 
+          onClick={() => handleCommand('home', 10)}
+          disabled={loading || !isConnected}
+        >
+          🏠 Home
+        </button>
+        <button 
+          className="secondary-btn justify-center" 
+          onClick={() => handleCommand('backward', 5)}
+          disabled={loading || !isConnected}
+        >
+          ⬇️ Back
+        </button>
         <span />
       </div>
+
+      {loading && (
+        <div className="mt-4 text-center">
+          <div className="inline-block animate-spin text-lg">⟳</div>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">Sending command...</p>
+        </div>
+      )}
+
+      {roverStatus && (
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          <InfoBox 
+            label="Battery" 
+            value={roverStatus.battery !== undefined ? `${roverStatus.battery}%` : 'Unknown'} 
+          />
+          <InfoBox 
+            label="Motor Status" 
+            value={roverStatus.motorStatus || 'Idle'} 
+          />
+          <InfoBox 
+            label="GPS Status" 
+            value={roverStatus.gpsStatus || 'Checking...'} 
+          />
+        </div>
+      )}
+
+      <p className="mt-4 text-xs text-slate-500 dark:text-slate-300">
+        💡 Tip: Make sure rover is connected via WiFi before sending commands. Commands will be queued if rover is offline.
+      </p>
     </div>
   );
 }
@@ -741,82 +1009,208 @@ function SurveyPage({ fields, readings, roverConfig }: { fields: Field[]; readin
   const [connection, setConnection] = useState<RoverConfig['connectionType']>(roverConfig?.connectionType ?? 'Offline');
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [latestReading, setLatestReading] = useState<SensorReading | undefined>();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
   const field = fields.find((item) => item.id === fieldId) ?? fields[0];
   const surveyReadings = readings.filter((item) => item.surveyId === survey?.id).sort((a, b) => a.pointIndex - b.pointIndex);
-  const latest = surveyReadings.at(-1);
+  const latest = surveyReadings.at(-1) || latestReading;
+
+  // Listen to real-time socket updates
+  const { connected: socketConnected } = useSocket({
+    autoConnect: true,
+    onSensorReading: (reading) => {
+      if (survey && reading.surveyId === survey.id) {
+        setLatestReading(reading);
+      }
+    },
+    onSurveyStarted: (data) => {
+      if (data.fieldId === fieldId) {
+        setSurvey(prev => prev ? { ...prev, status: 'running' } : undefined);
+        setRunning(true);
+        setElapsed(0);
+      }
+    },
+    onSurveyStopped: (data) => {
+      if (data.surveyId === survey?.id) {
+        setSurvey(prev => prev ? { ...prev, status: 'completed' } : undefined);
+        setRunning(false);
+      }
+    }
+  });
 
   useEffect(() => {
     if (!fieldId && fields[0]) setFieldId(fields[0].id);
   }, [fields, fieldId]);
 
+  // Timer for elapsed time display
   useEffect(() => {
     if (!running || !survey || !field) return;
-    const interval = window.setInterval(async () => {
-      setElapsed((value) => value + 3);
-      const currentCount = await db.readings.where('surveyId').equals(survey.id).count();
-      if (currentCount >= field.samplingPoints) {
-        await db.surveys.update(survey.id, { status: 'completed', endedAt: new Date().toISOString(), sampleCount: currentCount, batteryEnd: Math.max(18, 96 - Math.round(currentCount * 0.8)) });
-        setRunning(false);
-        return;
-      }
-      const reading = await getLiveReading(field.id, survey.id, currentCount + 1, roverConfig);
-      await db.readings.add(reading);
-      await db.surveys.update(survey.id, { sampleCount: currentCount + 1, synced: false });
-    }, 3000);
+    const interval = window.setInterval(() => {
+      setElapsed((value) => value + 1);
+    }, 1000);
     return () => window.clearInterval(interval);
   }, [running, survey, field]);
 
   const start = async () => {
     if (!field) return;
-    const created: Survey = { id: uid('survey'), fieldId: field.id, status: 'running', startedAt: new Date().toISOString(), sampleCount: 0, batteryStart: 96, connection, synced: false };
-    await db.surveys.add(created);
-    await startRoverSurvey(roverConfig);
-    setSurvey(created);
-    setElapsed(0);
-    setRunning(true);
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Call API to start survey
+      const result = await rover.startSurvey({
+        fieldId: field.id,
+        samplingPoints: field.samplingPoints,
+        roverId: 'primary'
+      });
+      
+      // Create local survey record
+      const created: Survey = {
+        id: result.survey.id || uid('survey'),
+        fieldId: field.id,
+        status: 'running',
+        startedAt: new Date().toISOString(),
+        sampleCount: 0,
+        batteryStart: roverConfig?.connected ? 96 : 100,
+        connection,
+        synced: true
+      };
+      
+      setSurvey(created);
+      setElapsed(0);
+      setRunning(true);
+      setLatestReading(undefined);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to start survey';
+      setError(message);
+      console.error('Start survey error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
+
   const pause = async () => {
     if (!survey) return;
-    setRunning(false);
-    await pauseRoverSurvey(roverConfig);
-    await db.surveys.update(survey.id, { status: 'paused' });
+    try {
+      setLoading(true);
+      setError(null);
+      
+      await rover.pauseSurvey({
+        surveyId: survey.id,
+        roverId: 'primary'
+      });
+      
+      setSurvey(prev => prev ? { ...prev, status: 'paused' } : undefined);
+      setRunning(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to pause survey';
+      setError(message);
+      console.error('Pause survey error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
+
   const resume = async () => {
     if (!survey) return;
-    setRunning(true);
-    await resumeRoverSurvey(roverConfig);
-    await db.surveys.update(survey.id, { status: 'running' });
+    try {
+      setLoading(true);
+      setError(null);
+      
+      await rover.resumeSurvey({
+        surveyId: survey.id,
+        roverId: 'primary'
+      });
+      
+      setSurvey(prev => prev ? { ...prev, status: 'running' } : undefined);
+      setRunning(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to resume survey';
+      setError(message);
+      console.error('Resume survey error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
+
   const stop = async () => {
     if (!survey) return;
-    setRunning(false);
-    await stopRoverSurvey(roverConfig);
-    await db.surveys.update(survey.id, { status: 'stopped', endedAt: new Date().toISOString(), batteryEnd: Math.max(20, 96 - surveyReadings.length) });
+    try {
+      setLoading(true);
+      setError(null);
+      
+      await rover.stopSurvey({
+        surveyId: survey.id,
+        roverId: 'primary'
+      });
+      
+      setSurvey(prev => prev ? { ...prev, status: 'completed', endedAt: new Date().toISOString() } : undefined);
+      setRunning(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to stop survey';
+      setError(message);
+      console.error('Stop survey error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const progress = field ? Math.min(100, Math.round((surveyReadings.length / field.samplingPoints) * 100)) : 0;
+  
   return (
     <div className="grid gap-6 xl:grid-cols-[.8fr_1.2fr]">
       <div className="glass rounded-[2rem] p-5">
         <h2 className="text-xl font-bold">Survey Workflow</h2>
+        {error && (
+          <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+            ⚠️ {error}
+          </div>
+        )}
         <div className="mt-4 space-y-4">
           <label className="label">Select Field</label>
-          <select className="input w-full" value={fieldId} onChange={(event) => setFieldId(event.target.value)}>
+          <select className="input w-full" value={fieldId} onChange={(event) => setFieldId(event.target.value)} disabled={running}>
             {fields.map((item) => (
               <option key={item.id} value={item.id}>{item.name} · {item.crop}</option>
             ))}
           </select>
-          <label className="label">Connect Rover</label>
+          <label className="label">Connection Status</label>
+          <div className="rounded-lg bg-slate-100 p-3 dark:bg-white/10">
+            <div className="flex items-center gap-2">
+              <div className={`size-2.5 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
+              <span className="text-sm font-medium">{socketConnected ? '🟢 Connected' : '🔴 Offline'}</span>
+            </div>
+          </div>
+          <label className="label">Rover Connection</label>
           <div className="grid grid-cols-3 gap-2">
             {(['WiFi', 'Bluetooth', 'Offline'] as const).map((item) => (
-              <button key={item} className={`segmented ${connection === item ? 'segmented-active' : ''}`} onClick={() => setConnection(item)}>{item}</button>
+              <button key={item} className={`segmented ${connection === item ? 'segmented-active' : ''}`} onClick={() => setConnection(item)} disabled={running}>
+                {item}
+              </button>
             ))}
           </div>
           <div className="grid grid-cols-2 gap-2">
-            {!survey || survey.status === 'completed' || survey.status === 'stopped' ? <button className="primary-btn col-span-2" onClick={start}><Play size={18} /> Start Survey</button> : null}
-            {survey && running && <button className="secondary-btn" onClick={pause}><Pause size={17} /> Pause</button>}
-            {survey && !running && survey.status === 'paused' && <button className="secondary-btn" onClick={resume}><RotateCw size={17} /> Resume</button>}
-            {survey && survey.status !== 'completed' && survey.status !== 'stopped' && <button className="danger-btn justify-center" onClick={stop}><Square size={17} /> Stop</button>}
+            {!survey || survey.status === 'completed' || survey.status === 'stopped' ? (
+              <button className="primary-btn col-span-2" onClick={start} disabled={loading || !field || !socketConnected}>
+                <Play size={18} /> {loading ? 'Starting...' : 'Start Survey'}
+              </button>
+            ) : null}
+            {survey && running && (
+              <button className="secondary-btn" onClick={pause} disabled={loading}>
+                <Pause size={17} /> {loading ? 'Pausing...' : 'Pause'}
+              </button>
+            )}
+            {survey && !running && survey.status === 'paused' && (
+              <button className="secondary-btn" onClick={resume} disabled={loading}>
+                <RotateCw size={17} /> {loading ? 'Resuming...' : 'Resume'}
+              </button>
+            )}
+            {survey && survey.status !== 'completed' && survey.status !== 'stopped' && (
+              <button className="danger-btn justify-center" onClick={stop} disabled={loading}>
+                <Square size={17} /> {loading ? 'Stopping...' : 'Stop'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -833,7 +1227,7 @@ function SurveyPage({ fields, readings, roverConfig }: { fields: Field[]; readin
         </div>
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">{surveyReadings.length} / {field?.samplingPoints ?? 0} sampling points</p>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {latest ? <SensorGrid reading={latest} /> : <p className="col-span-full text-slate-500 dark:text-slate-300">Start a survey to stream live sensor values every 3 seconds.</p>}
+          {latest ? <SensorGrid reading={latest} /> : <p className="col-span-full text-slate-500 dark:text-slate-300">Start a survey to stream live sensor values in real-time.</p>}
         </div>
         {latest && <p className="mt-4 text-sm text-slate-500 dark:text-slate-300">GPS {latest.gps.lat.toFixed(5)}, {latest.gps.lng.toFixed(5)} · {new Date(latest.time).toLocaleTimeString()}</p>}
       </div>
@@ -1092,16 +1486,83 @@ function ResultCard({ title, value, body, icon: Icon }: { title: string; value: 
 
 function Reports({ fields, surveys, readings }: { fields: Field[]; surveys: Survey[]; readings: SensorReading[] }) {
   const [query, setQuery] = useState('');
-  const selectedSurvey = surveys.find((survey) => fields.find((field) => field.id === survey.fieldId)?.name.toLowerCase().includes(query.toLowerCase())) ?? surveys[0];
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedSurvey, setSelectedSurvey] = useState<Survey | undefined>();
+      // Note: We don't need to load current user since reports logic works on passed surveys and fields list
+
+  // Find survey matching query
+  useEffect(() => {
+    const found = surveys.find((survey) => {
+      const field = fields.find((f) => f.id === survey.fieldId);
+      return field?.name.toLowerCase().includes(query.toLowerCase());
+    });
+    setSelectedSurvey(found || surveys[0]);
+  }, [query, surveys, fields]);
+
   const field = fields.find((item) => item.id === selectedSurvey?.fieldId);
   const reportReadings = readings.filter((item) => item.surveyId === selectedSurvey?.id).sort((a, b) => a.pointIndex - b.pointIndex);
+
+  const handleExportCSV = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const { generateCSV, downloadCSV } = await import('./services/history');
+      const csv = generateCSV(reportReadings, field, selectedSurvey);
+      const timestamp = new Date().toISOString().slice(0, 10);
+      downloadCSV(`agrisense-survey-${field?.name || 'report'}-${timestamp}.csv`, csv);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to export CSV';
+      setError(message);
+      console.error('CSV export error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const { exportPDF } = await import('./services/export');
+      exportPDF(field, selectedSurvey, reportReadings);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to export PDF';
+      setError(message);
+      console.error('PDF export error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="glass flex flex-col gap-3 rounded-[2rem] p-4 sm:flex-row sm:items-center">
         <input className="input flex-1" placeholder="Filter reports by field name" value={query} onChange={(event) => setQuery(event.target.value)} />
-        <button className="secondary-btn" onClick={() => exportCSV(reportReadings)}><Download size={17} /> CSV</button>
-        <button className="primary-btn" onClick={() => exportPDF(field, selectedSurvey, reportReadings)}><FileBarChart size={17} /> PDF</button>
+        <button 
+          className="secondary-btn" 
+          onClick={handleExportCSV}
+          disabled={loading || !selectedSurvey || reportReadings.length === 0}
+        >
+          <Download size={17} /> {loading ? 'Exporting...' : 'CSV'}
+        </button>
+        <button 
+          className="primary-btn" 
+          onClick={handleExportPDF}
+          disabled={loading || !selectedSurvey || reportReadings.length === 0}
+        >
+          <FileBarChart size={17} /> {loading ? 'Generating...' : 'PDF'}
+        </button>
       </div>
+      
+      {error && (
+        <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+          ⚠️ {error}
+        </div>
+      )}
+
       <div className="grid gap-6 xl:grid-cols-[.75fr_1.25fr]">
         <div className="glass rounded-[2rem] p-5">
           <h2 className="text-xl font-bold">{field?.name ?? 'No report selected'}</h2>
@@ -1109,25 +1570,35 @@ function Reports({ fields, surveys, readings }: { fields: Field[]; surveys: Surv
             <InfoBox label="Crop" value={field?.crop ?? '-'} />
             <InfoBox label="Survey Status" value={selectedSurvey?.status ?? '-'} />
             <InfoBox label="Samples" value={reportReadings.length} />
-            <InfoBox label="Average Health" value={`${Math.round(reportReadings.reduce((sum, item) => sum + item.soilHealth, 0) / Math.max(reportReadings.length, 1))}%`} />
+            <InfoBox label="Average Health" value={`${reportReadings.length > 0 ? Math.round(reportReadings.reduce((sum, item) => sum + item.soilHealth, 0) / reportReadings.length) : 0}%`} />
+            {reportReadings.length > 0 && (
+              <>
+                <InfoBox label="Avg. Nitrogen" value={`${(reportReadings.reduce((sum, r) => sum + r.nitrogen, 0) / reportReadings.length).toFixed(1)} mg/kg`} />
+                <InfoBox label="Avg. Moisture" value={`${(reportReadings.reduce((sum, r) => sum + r.moisture, 0) / reportReadings.length).toFixed(1)}%`} />
+              </>
+            )}
           </div>
         </div>
         <div className="glass rounded-[2rem] p-5">
           <h2 className="text-xl font-bold">NPK and Moisture Trends</h2>
-          <div className="mt-5 h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={reportReadings}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.25)" />
-                <XAxis dataKey="pointIndex" />
-                <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="nitrogen" stroke="#2E7D32" strokeWidth={3} dot={false} />
-                <Line type="monotone" dataKey="phosphorus" stroke="#66BB6A" strokeWidth={3} dot={false} />
-                <Line type="monotone" dataKey="potassium" stroke="#0F766E" strokeWidth={3} dot={false} />
-                <Line type="monotone" dataKey="moisture" stroke="#2563EB" strokeWidth={3} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          {reportReadings.length > 0 ? (
+            <div className="mt-5 h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={reportReadings}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.25)" />
+                  <XAxis dataKey="pointIndex" />
+                  <YAxis />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="nitrogen" stroke="#2E7D32" strokeWidth={3} dot={false} name="N" />
+                  <Line type="monotone" dataKey="phosphorus" stroke="#66BB6A" strokeWidth={3} dot={false} name="P" />
+                  <Line type="monotone" dataKey="potassium" stroke="#0F766E" strokeWidth={3} dot={false} name="K" />
+                  <Line type="monotone" dataKey="moisture" stroke="#2563EB" strokeWidth={3} dot={false} name="Moisture" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="mt-5 text-slate-500 dark:text-slate-300">No readings available for this survey</p>
+          )}
         </div>
       </div>
     </div>
@@ -1135,29 +1606,102 @@ function Reports({ fields, surveys, readings }: { fields: Field[]; surveys: Surv
 }
 
 function SettingsPage({ settings, online, pending, refreshPending }: { settings?: Settings; online: boolean; pending: number; refreshPending: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [localSettings, setLocalSettings] = useState<Record<string, any>>(settings || {});
+
+  // Sync settings when they change
+  useEffect(() => {
+    setLocalSettings(settings || {});
+  }, [settings]);
+
+  const handleUpdateSetting = async (key: string, value: any) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { updateUserSettings } = await import('./services/settings');
+      await updateUserSettings({ [key]: value });
+
+      // Update local state
+      setLocalSettings(prev => ({ ...prev, [key]: value }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update setting';
+      setError(message);
+      console.error('Settings update error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!settings) return null;
-  const update = (patch: Partial<Settings>) => db.settings.update('settings', patch);
+
   return (
     <div className="grid gap-6 xl:grid-cols-2">
       <div className="glass rounded-[2rem] p-5">
         <h2 className="text-xl font-bold">Preferences</h2>
+        {error && (
+          <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+            ⚠️ {error}
+          </div>
+        )}
         <div className="mt-5 space-y-4">
           <label className="space-y-1">
-            <span className="label">Sampling Distance</span>
-            <input className="input w-full" type="number" value={settings.samplingDistance} onChange={(event) => update({ samplingDistance: Number(event.target.value) })} />
+            <span className="label">Sampling Distance (meters)</span>
+            <input 
+              className="input w-full" 
+              type="number" 
+              value={localSettings.samplingDistance || 5}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                setLocalSettings(prev => ({ ...prev, samplingDistance: value }));
+                handleUpdateSetting('samplingDistance', value);
+              }}
+              disabled={loading}
+            />
           </label>
           <label className="space-y-1">
             <span className="label">Units</span>
-            <select className="input w-full" value={settings.units} onChange={(event) => update({ units: event.target.value as Settings['units'] })}>
+            <select 
+              className="input w-full" 
+              value={localSettings.units || 'Metric'}
+              onChange={(e) => {
+                setLocalSettings(prev => ({ ...prev, units: e.target.value }));
+                handleUpdateSetting('units', e.target.value);
+              }}
+              disabled={loading}
+            >
               <option>Metric</option>
               <option>Imperial</option>
             </select>
           </label>
-          <Toggle label="Dark Mode" value={settings.darkMode} onChange={(value) => update({ darkMode: value })} />
-          <Toggle label="Offline Sync" value={settings.offlineSync} onChange={(value) => update({ offlineSync: value })} />
+          <Toggle 
+            label="Dark Mode" 
+            value={localSettings.darkMode || false}
+            onChange={(value) => {
+              setLocalSettings(prev => ({ ...prev, darkMode: value }));
+              handleUpdateSetting('darkMode', value);
+            }}
+          />
+          <Toggle 
+            label="Offline Sync" 
+            value={localSettings.offlineSync || false}
+            onChange={(value) => {
+              setLocalSettings(prev => ({ ...prev, offlineSync: value }));
+              handleUpdateSetting('offlineSync', value);
+            }}
+          />
           <label className="space-y-1">
             <span className="label">Language</span>
-            <select className="input w-full" value={settings.language} onChange={(event) => update({ language: event.target.value })}>
+            <select 
+              className="input w-full" 
+              value={localSettings.language || 'English'}
+              onChange={(e) => {
+                setLocalSettings(prev => ({ ...prev, language: e.target.value }));
+                handleUpdateSetting('language', e.target.value);
+              }}
+              disabled={loading}
+            >
               <option>English</option>
               <option>Hindi</option>
               <option>Telugu</option>
@@ -1166,7 +1710,52 @@ function SettingsPage({ settings, online, pending, refreshPending }: { settings?
           </label>
         </div>
       </div>
+
       <div className="space-y-6">
+        <div className="glass rounded-[2rem] p-5">
+          <h2 className="text-xl font-bold">ESP32 Configuration</h2>
+          <div className="mt-5 space-y-4">
+            <label className="space-y-1">
+              <span className="label">ESP32 IP Address</span>
+              <input 
+                className="input w-full font-mono text-sm" 
+                type="text" 
+                placeholder="192.168.1.100"
+                value={localSettings.esp32IP || ''}
+                onChange={(e) => {
+                  setLocalSettings(prev => ({ ...prev, esp32IP: e.target.value }));
+                  handleUpdateSetting('esp32IP', e.target.value);
+                }}
+                disabled={loading}
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="label">WiFi Mode</span>
+              <select 
+                className="input w-full" 
+                value={localSettings.wifiMode || 'WiFi'}
+                onChange={(e) => {
+                  setLocalSettings(prev => ({ ...prev, wifiMode: e.target.value }));
+                  handleUpdateSetting('wifiMode', e.target.value);
+                }}
+                disabled={loading}
+              >
+                <option>WiFi</option>
+                <option>Bluetooth</option>
+                <option>LoRa</option>
+              </select>
+            </label>
+            <Toggle 
+              label="Auto Connect" 
+              value={localSettings.autoConnect || true}
+              onChange={(value) => {
+                setLocalSettings(prev => ({ ...prev, autoConnect: value }));
+                handleUpdateSetting('autoConnect', value);
+              }}
+            />
+          </div>
+        </div>
+
         <div className="glass rounded-[2rem] p-5">
           <h2 className="text-xl font-bold">Offline Sync</h2>
           <p className="mt-2 text-slate-500 dark:text-slate-300">{pending} records pending. Current status: {online ? 'online' : 'offline'}.</p>
@@ -1176,16 +1765,18 @@ function SettingsPage({ settings, online, pending, refreshPending }: { settings?
               await syncNow();
               refreshPending();
             }}
+            disabled={loading}
           >
             <Cloud size={18} /> Sync Now
           </button>
         </div>
+
         <div className="glass rounded-[2rem] p-5">
           <h2 className="text-xl font-bold">Local Database</h2>
           <div className="mt-5 flex flex-wrap gap-3">
-            <button className="secondary-btn" onClick={exportBackup}><Download size={17} /> Backup Local Database</button>
+            <button className="secondary-btn" onClick={exportBackup}><Download size={17} /> Backup</button>
             <label className="secondary-btn cursor-pointer">
-              <Upload size={17} /> Restore Backup
+              <Upload size={17} /> Restore
               <input hidden type="file" accept="application/json" onChange={(event) => event.target.files?.[0] && restoreBackup(event.target.files[0])} />
             </label>
           </div>

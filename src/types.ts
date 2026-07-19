@@ -42,6 +42,7 @@ export interface SensorReading {
   time: string;
   soilHealth: number;
   synced: boolean;
+  battery?: number;
 }
 
 export interface SensorAvailability {

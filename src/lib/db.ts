@@ -36,19 +36,23 @@ class AgriSenseDB extends Dexie {
 export const db = new AgriSenseDB();
 
 export async function initializeDatabase() {
-  const userCount = await db.users.count();
-  if (!userCount) {
-    await db.users.bulkAdd([
-      { id: uid('user'), name: 'Farmer', role: 'Farmer', createdAt: new Date().toISOString() },
-      { id: uid('user'), name: 'Researcher', role: 'Researcher', createdAt: new Date().toISOString() },
-      { id: uid('user'), name: 'Admin', role: 'Admin', createdAt: new Date().toISOString() }
-    ]);
-  }
+  try {
+    const userCount = await db.users.count();
+    if (!userCount) {
+      await db.users.bulkAdd([
+        { id: uid('user'), name: 'Farmer', role: 'Farmer', createdAt: new Date().toISOString() },
+        { id: uid('user'), name: 'Researcher', role: 'Researcher', createdAt: new Date().toISOString() },
+        { id: uid('user'), name: 'Admin', role: 'Admin', createdAt: new Date().toISOString() }
+      ]);
+    }
 
-  const settings = await db.settings.get('settings');
-  if (!settings) {
-    await db.settings.put({ id: 'settings', samplingDistance: 12, units: 'Metric', darkMode: false, offlineSync: true, autoSave: true, language: 'English' });
-  } else if (settings.autoSave === undefined) {
-    await db.settings.update('settings', { autoSave: true });
+    const settings = await db.settings.get('settings');
+    if (!settings) {
+      await db.settings.put({ id: 'settings', samplingDistance: 12, units: 'Metric', darkMode: false, offlineSync: true, autoSave: true, language: 'English' });
+    } else if (settings.autoSave === undefined) {
+      await db.settings.update('settings', { autoSave: true });
+    }
+  } catch (err) {
+    console.error('Failed to initialize local IndexedDB:', err);
   }
 }

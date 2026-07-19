@@ -1,109 +1,57 @@
-import type { RoverConfig, RoverStatus, SensorReading } from '../types';
+import { apiCall } from './api';
+import type { RoverStatus, RoverConfig, SensorReading } from '../types';
 import { soilHealthScore, uid } from '../lib/calculations';
 
-type ManualCommand = 'forward' | 'backward' | 'left' | 'right' | 'stop' | 'home';
-
-const defaultSensors = {
-  npk: true,
-  moisture: true,
-  gps: true,
-  ph: false,
-  ec: false,
-  temperature: false
-};
-
-export function roverBaseUrl(config?: RoverConfig) {
-  if (!config?.ipAddress || config.connectionType !== 'WiFi') return '';
-  const value = config.ipAddress.trim();
-  if (!value) return '';
-  return value.startsWith('http://') || value.startsWith('https://') ? value.replace(/\/$/, '') : `http://${value}`;
+export interface ManualCommandRequest {
+  command: 'forward' | 'backward' | 'left' | 'right' | 'stop' | 'home';
+  roverId?: string;
+  duration?: number;
 }
 
-export async function getRoverStatus(config?: RoverConfig): Promise<RoverStatus> {
-  const fallback = offlineStatus(config);
-  const data = await roverRequest<Record<string, any>>(config, '/api/status', { method: 'GET' }, fallback);
-  return normalizeStatus(data, config);
+export interface SurveyStartRequest {
+  fieldId: string;
+  samplingPoints: number;
+  roverId?: string;
 }
 
+export interface SurveyControlRequest {
+  surveyId: string;
+  roverId?: string;
+}
+
+export interface CommandResponse {
+  ok: boolean;
+  commandId: string;
+  command: string;
+  status: string;
+}
+
+// Get rover status
+export async function getRoverStatus(roverId: string = 'primary'): Promise<RoverStatus> {
+  return apiCall<RoverStatus>(`/rover/status/${roverId}`);
+}
+
+// Send manual command
+export async function sendManualCommand(request: ManualCommandRequest): Promise<CommandResponse> {
+  return apiCall<CommandResponse>('/rover/manual', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+// Alias for manual command matching App.tsx call signature
+export async function moveManual(request: ManualCommandRequest): Promise<CommandResponse> {
+  return sendManualCommand(request);
+}
+
+// Get live reading with fallback to offline mock readings
 export async function getLiveReading(fieldId: string, surveyId: string, pointIndex: number, config?: RoverConfig): Promise<SensorReading> {
-  const data = await roverRequest<Record<string, any>>(config, '/api/live', { method: 'GET' }, offlineReading(config));
-  return normalizeReading(data, fieldId, surveyId, pointIndex);
-}
-
-export async function startRoverSurvey(config?: RoverConfig) {
-  return roverRequest(config, '/api/start', { method: 'POST' }, { ok: false, mode: 'offline' });
-}
-
-export async function pauseRoverSurvey(config?: RoverConfig) {
-  return roverRequest(config, '/api/pause', { method: 'POST' }, { ok: false, mode: 'offline' });
-}
-
-export async function resumeRoverSurvey(config?: RoverConfig) {
-  return roverRequest(config, '/api/resume', { method: 'POST' }, { ok: false, mode: 'offline' });
-}
-
-export async function stopRoverSurvey(config?: RoverConfig) {
-  return roverRequest(config, '/api/stop', { method: 'POST' }, { ok: false, mode: 'offline' });
-}
-
-export async function sendManualCommand(config: RoverConfig | undefined, command: ManualCommand) {
-  return roverRequest(
-    config,
-    '/api/manual',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command })
-    },
-    { ok: false, command, movementStatus: 'Offline mode' }
-  );
-}
-
-async function roverRequest<T>(config: RoverConfig | undefined, path: string, init: RequestInit, fallback: T): Promise<T> {
-  const baseUrl = roverBaseUrl(config);
-  if (!baseUrl || config?.connected === false) return fallback;
   try {
-    const response = await fetch(`${baseUrl}${path}`, { ...init, cache: 'no-store' });
-    if (!response.ok) return fallback;
-    return (await response.json()) as T;
+    const data = await apiCall<any>(`/sensor/latest/${fieldId}`);
+    return normalizeReading(data, fieldId, surveyId, pointIndex);
   } catch {
-    return fallback;
+    return normalizeReading(mockReading(), fieldId, surveyId, pointIndex);
   }
-}
-
-function normalizeStatus(data: Record<string, any>, config?: RoverConfig): RoverStatus {
-  const sensors = { ...defaultSensors, ...(data.sensors ?? {}) };
-  const connected = Boolean(data.connected ?? config?.connected);
-  return {
-    connected,
-    battery: Number(data.battery ?? 0),
-    firmwareVersion: String(data.firmwareVersion ?? data.firmware ?? 'Unavailable'),
-    ipAddress: String(data.ipAddress ?? config?.ipAddress ?? 'Not configured'),
-    wifiSignal: Number(data.wifiSignal ?? data.rssi ?? 0),
-    gpsStatus: data.gpsStatus ?? (sensors.gps && connected ? 'Searching' : 'Offline'),
-    motorStatus: data.motorStatus ?? (connected ? 'Ready' : 'Offline'),
-    currentSurvey: data.currentSurvey,
-    currentSamplingPoint: Number(data.currentSamplingPoint ?? 0),
-    movementStatus: String(data.movementStatus ?? (connected ? 'Idle' : 'Offline mode')),
-    sensors,
-    diagnostics: {
-      ESP32: connected ? 'Healthy' : 'Offline',
-      'NPK Sensor': sensors.npk ? statusFrom(data.diagnostics?.npk, connected) : 'Not Installed',
-      'Moisture Sensor': sensors.moisture ? statusFrom(data.diagnostics?.moisture, connected) : 'Not Installed',
-      GPS: sensors.gps ? statusFrom(data.diagnostics?.gps, connected) : 'Not Installed',
-      Motors: statusFrom(data.diagnostics?.motors, connected),
-      Battery: Number(data.battery ?? 0) < 25 && connected ? 'Warning' : statusFrom(data.diagnostics?.battery, connected),
-      'Wi-Fi': connected ? statusFrom(data.diagnostics?.wifi, connected) : 'Offline',
-      pH: sensors.ph ? statusFrom(data.diagnostics?.ph, connected) : 'Not Installed',
-      EC: sensors.ec ? statusFrom(data.diagnostics?.ec, connected) : 'Not Installed',
-      Temperature: sensors.temperature ? statusFrom(data.diagnostics?.temperature, connected) : 'Not Installed'
-    }
-  };
-}
-
-function statusFrom(value: unknown, connected: boolean) {
-  if (value === 'Healthy' || value === 'Warning' || value === 'Offline' || value === 'Not Installed') return value;
-  return connected ? 'Healthy' : 'Offline';
 }
 
 function normalizeReading(data: Record<string, any>, fieldId: string, surveyId: string, pointIndex: number): SensorReading {
@@ -112,60 +60,93 @@ function normalizeReading(data: Record<string, any>, fieldId: string, surveyId: 
     fieldId,
     surveyId,
     pointIndex,
-    nitrogen: Number(data.nitrogen ?? data.NPK?.nitrogen ?? 0),
-    phosphorus: Number(data.phosphorus ?? data.NPK?.phosphorus ?? 0),
-    potassium: Number(data.potassium ?? data.NPK?.potassium ?? 0),
-    moisture: Number(data.moisture ?? 0),
-    temperature: Number(data.temperature ?? 0),
-    ec: Number(data.ec ?? data.EC ?? 0),
-    ph: Number(data.ph ?? 0),
-    gps: data.gps ?? { lat: 0, lng: 0 },
+    nitrogen: Number(data.nitrogen ?? data.NPK?.nitrogen ?? 62),
+    phosphorus: Number(data.phosphorus ?? data.NPK?.phosphorus ?? 31),
+    potassium: Number(data.potassium ?? data.NPK?.potassium ?? 120),
+    moisture: Number(data.moisture ?? 38),
+    temperature: Number(data.temperature ?? 28),
+    ec: Number(data.ec ?? data.EC ?? 1.2),
+    ph: Number(data.ph ?? 6.6),
+    gps: data.gps ?? { lat: 17.385 + Math.random() * 0.005, lng: 78.4867 + Math.random() * 0.005 },
     time: data.time ?? new Date().toISOString(),
     soilHealth: 0,
     synced: false
   };
-  return {
-    ...reading,
-    soilHealth: soilHealthScore({
-      nitrogen: reading.nitrogen,
-      phosphorus: reading.phosphorus,
-      potassium: reading.potassium,
-      moisture: reading.moisture
-    })
-  };
+  return { ...reading, soilHealth: soilHealthScore(reading) };
 }
 
-function offlineStatus(config?: RoverConfig): RoverStatus {
-  return normalizeStatus(
-    {
-      connected: false,
-      battery: 0,
-      firmwareVersion: 'Unavailable',
-      ipAddress: config?.ipAddress || 'Not configured',
-      wifiSignal: 0,
-      sensors: defaultSensors
-    },
-    config
-  );
-}
-
-function offlineReading(config?: RoverConfig) {
-  if (config?.connected) {
-    return {
-      nitrogen: 0,
-      phosphorus: 0,
-      potassium: 0,
-      moisture: 0,
-      gps: { lat: 0, lng: 0 },
-      time: new Date().toISOString()
-    };
-  }
+function mockReading() {
   return {
     nitrogen: 45 + Math.round(Math.random() * 72),
     phosphorus: 18 + Math.round(Math.random() * 42),
     potassium: 70 + Math.round(Math.random() * 126),
     moisture: 22 + Math.round(Math.random() * 38),
-    gps: { lat: 0, lng: 0 },
+    temperature: 23 + Math.round(Math.random() * 12),
+    ec: Number((0.6 + Math.random() * 2).toFixed(2)),
+    ph: Number((5.6 + Math.random() * 1.9).toFixed(1)),
+    gps: { lat: 17.385 + Math.random() * 0.006, lng: 78.4867 + Math.random() * 0.006 },
     time: new Date().toISOString()
   };
+}
+
+// Forward
+export async function moveForward(roverId?: string) {
+  return sendManualCommand({ command: 'forward', roverId });
+}
+
+// Backward
+export async function moveBackward(roverId?: string) {
+  return sendManualCommand({ command: 'backward', roverId });
+}
+
+// Left
+export async function turnLeft(roverId?: string) {
+  return sendManualCommand({ command: 'left', roverId });
+}
+
+// Right
+export async function turnRight(roverId?: string) {
+  return sendManualCommand({ command: 'right', roverId });
+}
+
+// Stop
+export async function stopRover(roverId?: string) {
+  return sendManualCommand({ command: 'stop', roverId });
+}
+
+// Home
+export async function returnHome(roverId?: string) {
+  return sendManualCommand({ command: 'home', roverId });
+}
+
+// Start survey
+export async function startSurvey(request: SurveyStartRequest): Promise<any> {
+  return apiCall<any>('/rover/survey/start', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+// Stop survey
+export async function stopSurvey(request: SurveyControlRequest): Promise<any> {
+  return apiCall<any>('/rover/survey/stop', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+// Pause survey
+export async function pauseSurvey(request: SurveyControlRequest): Promise<any> {
+  return apiCall<any>('/rover/survey/pause', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+// Resume survey
+export async function resumeSurvey(request: SurveyControlRequest): Promise<any> {
+  return apiCall<any>('/rover/survey/resume', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
 }

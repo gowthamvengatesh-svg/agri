@@ -1,7 +1,12 @@
 import type { AIInput, AIResult, Field, SensorReading } from '../types';
 
 export function uid(prefix: string) {
-  return `${prefix}_${crypto.randomUUID()}`;
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}_${crypto.randomUUID()}`;
+  }
+  // Fallback for non-secure contexts (e.g. HTTP on local network IP)
+  const randomHex = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
+  return `${prefix}_${randomHex()}${randomHex()}-${randomHex()}-${randomHex()}-${randomHex()}-${randomHex()}${randomHex()}${randomHex()}`;
 }
 
 export function computeField(input: Pick<Field, 'length' | 'width' | 'samplingDistance'>) {

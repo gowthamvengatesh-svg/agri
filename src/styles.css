@@ -34,9 +34,10 @@ select {
 }
 
 .dark .glass {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.075);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+  border-color: rgba(102, 187, 106, 0.18);
+  background: rgba(16, 24, 18, 0.72);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(28px);
 }
 
 .input {
@@ -56,8 +57,9 @@ select {
 }
 
 .dark .input {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(24, 36, 27, 0.75);
+  border-color: rgba(102, 187, 106, 0.22);
+  color: #f1f5f9;
 }
 
 .label {
@@ -65,6 +67,10 @@ select {
   font-size: 0.78rem;
   font-weight: 700;
   color: #2e7d32;
+}
+
+.dark .label {
+  color: #66bb6a;
 }
 
 .primary-btn,
@@ -97,11 +103,21 @@ select {
   padding: 0 16px;
 }
 
+.dark .secondary-btn {
+  background: rgba(102, 187, 106, 0.15);
+  color: #81c784;
+}
+
 .danger-btn {
   justify-content: center;
   background: rgba(239, 68, 68, 0.12);
   color: #dc2626;
   padding: 0 14px;
+}
+
+.dark .danger-btn {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
 }
 
 .icon-btn {
@@ -112,7 +128,8 @@ select {
 }
 
 .dark .icon-btn {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(24, 36, 27, 0.75);
+  border: 1px solid rgba(102, 187, 106, 0.2);
 }
 
 .primary-btn:hover,
@@ -129,7 +146,7 @@ select {
 }
 
 .dark .segmented {
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(24, 36, 27, 0.65);
 }
 
 .segmented-active {
