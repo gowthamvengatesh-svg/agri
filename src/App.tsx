@@ -259,8 +259,8 @@ function Sidebar({ page, setPage, open, close, user, onLogout }: { page: Page; s
   return (
     <>
       <button aria-label="Close navigation" className={`fixed inset-0 z-30 bg-black/30 lg:hidden ${open ? 'block' : 'hidden'}`} onClick={close} />
-      <aside className={`fixed inset-y-0 left-0 z-40 w-72 transform border-r border-white/30 bg-white/70 p-4 shadow-glass backdrop-blur-2xl transition dark:border-white/10 dark:bg-white/8 lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="mb-8 flex items-center gap-3 rounded-3xl bg-primary/10 p-3">
+      <aside className={`fixed inset-y-0 left-0 z-40 w-72 transform border-r border-white/30 bg-white/70 p-4 shadow-glass backdrop-blur-2xl transition dark:border-white/10 dark:bg-black lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="mb-8 flex items-center gap-3 rounded-3xl bg-primary/10 p-3 dark:bg-white/5 dark:border dark:border-white/10">
           <div className="grid size-12 place-items-center rounded-2xl bg-primary text-white shadow-lg shadow-primary/25">
             <Leaf />
           </div>
@@ -289,7 +289,7 @@ function Sidebar({ page, setPage, open, close, user, onLogout }: { page: Page; s
             );
           })}
         </nav>
-        <div className="absolute bottom-4 left-4 right-4 rounded-3xl bg-white/70 p-4 text-sm text-slate-600 shadow-sm dark:bg-white/10 dark:text-slate-300">
+        <div className="absolute bottom-4 left-4 right-4 rounded-3xl bg-white/70 p-4 text-sm text-slate-600 shadow-sm dark:bg-white/5 dark:border dark:border-white/10 dark:text-slate-300">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <div className="grid size-7 place-items-center rounded-lg bg-primary/20 text-primary font-bold text-xs">
