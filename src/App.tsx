@@ -92,10 +92,14 @@ export default function App() {
   const online = useOnlineStatus();
 
   useEffect(() => {
-    if (currentUser || !users.length) return;
+    if (!users.length) return;
     const saved = localStorage.getItem('agrisense-user-id');
     const savedUser = users.find((item) => item.id === saved);
-    if (savedUser) setCurrentUser(savedUser);
+    if (savedUser) {
+      if (!currentUser || currentUser.id !== savedUser.id || currentUser.name !== savedUser.name) {
+        setCurrentUser(savedUser);
+      }
+    }
   }, [users, currentUser]);
 
   useEffect(() => {

@@ -47,10 +47,10 @@ export async function initializeDatabase() {
     } else {
       const allUsers = await db.users.toArray();
       for (const u of allUsers) {
-        if (u.role === 'Farmer' && (u.name === 'Farmer' || u.name === 'John Farmer')) {
+        if (u.role === 'Farmer' && u.name !== 'Vivasayi') {
           await db.users.update(u.id, { name: 'Vivasayi' });
         }
-        if (u.role === 'Researcher' && u.name === 'Researcher') {
+        if (u.role === 'Researcher' && u.name !== 'Dr.Gowtham') {
           await db.users.update(u.id, { name: 'Dr.Gowtham' });
         }
       }
