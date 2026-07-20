@@ -53,6 +53,8 @@ import {
 import type { AIInput, Field, Role, RoverConfig, RoverStatus, SensorReading, Settings, Survey, User } from './types';
 import { computeField, generateAIRecommendation, uid } from './lib/calculations';
 import { db } from './lib/db';
+import { generateCSV, downloadCSV } from './services/history';
+import { updateUserSettings } from './services/settings';
 import { useClock, useLiveQuery, useOnlineStatus } from './lib/hooks';
 import { getLiveReading, getRoverStatus } from './services/rover';
 import { pendingSyncCount, syncNow } from './services/sync';
@@ -1512,7 +1514,6 @@ function Reports({ fields, surveys, readings }: { fields: Field[]; surveys: Surv
       setLoading(true);
       setError(null);
       
-      const { generateCSV, downloadCSV } = await import('./services/history');
       const csv = generateCSV(reportReadings, field, selectedSurvey);
       const timestamp = new Date().toISOString().slice(0, 10);
       downloadCSV(`agrisense-survey-${field?.name || 'report'}-${timestamp}.csv`, csv);
@@ -1530,7 +1531,6 @@ function Reports({ fields, surveys, readings }: { fields: Field[]; surveys: Surv
       setLoading(true);
       setError(null);
       
-      const { exportPDF } = await import('./services/export');
       exportPDF(field, selectedSurvey, reportReadings);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to export PDF';
@@ -1624,7 +1624,6 @@ function SettingsPage({ settings, online, pending, refreshPending }: { settings?
       setLoading(true);
       setError(null);
 
-      const { updateUserSettings } = await import('./services/settings');
       await updateUserSettings({ [key]: value });
 
       // Update local state
