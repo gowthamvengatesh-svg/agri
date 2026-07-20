@@ -40,10 +40,20 @@ export async function initializeDatabase() {
     const userCount = await db.users.count();
     if (!userCount) {
       await db.users.bulkAdd([
-        { id: uid('user'), name: 'Farmer', role: 'Farmer', createdAt: new Date().toISOString() },
-        { id: uid('user'), name: 'Researcher', role: 'Researcher', createdAt: new Date().toISOString() },
+        { id: uid('user'), name: 'Vivasayi', role: 'Farmer', createdAt: new Date().toISOString() },
+        { id: uid('user'), name: 'Dr.Gowtham', role: 'Researcher', createdAt: new Date().toISOString() },
         { id: uid('user'), name: 'Admin', role: 'Admin', createdAt: new Date().toISOString() }
       ]);
+    } else {
+      const allUsers = await db.users.toArray();
+      for (const u of allUsers) {
+        if (u.role === 'Farmer' && (u.name === 'Farmer' || u.name === 'John Farmer')) {
+          await db.users.update(u.id, { name: 'Vivasayi' });
+        }
+        if (u.role === 'Researcher' && u.name === 'Researcher') {
+          await db.users.update(u.id, { name: 'Dr.Gowtham' });
+        }
+      }
     }
 
     const settings = await db.settings.get('settings');
