@@ -15,15 +15,20 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  
   const url = new URL(event.request.url);
+  // Ignore non-http schemes (e.g. chrome-extension://) and API calls
+  if (!url.protocol.startsWith('http')) return;
   if (url.pathname.startsWith('/api/')) return;
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const network = fetch(event.request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          if (response.status === 200 && response.type === 'basic') {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
+          }
           return response;
         })
         .catch(() => cached || caches.match('/index.html'));

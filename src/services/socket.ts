@@ -17,8 +17,13 @@ export interface SocketListeners {
 }
 
 // Initialize Socket.IO connection
-export function initSocket(listeners: SocketListeners): Socket {
+export function initSocket(listeners: SocketListeners): Socket | null {
   if (socket) return socket;
+
+  // Skip local socket connection if running on production HTTPS origin without a custom socket URL
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && SOCKET_URL.includes('localhost')) {
+    return null;
+  }
 
   socket = io(SOCKET_URL, {
     reconnection: true,
@@ -85,19 +90,13 @@ export function disconnectSocket() {
 
 // Subscribe to sensor updates
 export function subscribeToSensor(fieldId: string) {
-  if (!socket) {
-    console.warn('Socket not initialized');
-    return;
-  }
+  if (!socket) return;
   socket.emit('subscribe:sensor', { fieldId });
 }
 
 // Subscribe to rover updates
 export function subscribeToRover(roverId: string = 'primary') {
-  if (!socket) {
-    console.warn('Socket not initialized');
-    return;
-  }
+  if (!socket) return;
   socket.emit('subscribe:rover', { roverId });
 }
 

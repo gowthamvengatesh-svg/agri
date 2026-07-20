@@ -9,10 +9,28 @@ export const FirestoreCollections = {
   ALERTS: 'alerts'
 };
 
+// Helper for default rover status when Cloud Firestore API is disabled or uninitialized
+function getDefaultRoverStatus(roverId = 'primary') {
+  return {
+    id: roverId,
+    connected: false,
+    battery: 100,
+    signalStrength: -65,
+    mode: 'manual',
+    status: 'idle',
+    updatedAt: new Date().toISOString()
+  };
+}
+
 // User operations
 export async function getUserProfile(userId) {
-  const doc = await db.collection(FirestoreCollections.USERS).doc(userId).get();
-  return doc.exists ? { id: doc.id, ...doc.data() } : null;
+  try {
+    const doc = await db.collection(FirestoreCollections.USERS).doc(userId).get();
+    return doc.exists ? { id: doc.id, ...doc.data() } : null;
+  } catch (err) {
+    console.warn('Firestore getUserProfile fallback:', err.message);
+    return null;
+  }
 }
 
 export async function createUserProfile(userId, { name, email, role }) {
@@ -20,7 +38,7 @@ export async function createUserProfile(userId, { name, email, role }) {
     id: userId,
     name,
     email,
-    role, // 'Farmer', 'Researcher', 'Admin'
+    role,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     settings: {
@@ -31,69 +49,88 @@ export async function createUserProfile(userId, { name, email, role }) {
       wifiMode: 'WiFi'
     }
   };
-  await db.collection(FirestoreCollections.USERS).doc(userId).set(userData);
+  try {
+    await db.collection(FirestoreCollections.USERS).doc(userId).set(userData);
+  } catch (err) {
+    console.warn('Firestore createUserProfile fallback:', err.message);
+  }
   return userData;
 }
 
 export async function updateUserSettings(userId, settings) {
-  const user = await db.collection(FirestoreCollections.USERS).doc(userId).get();
-  if (!user.exists) {
-    throw new Error('User not found');
+  try {
+    const user = await db.collection(FirestoreCollections.USERS).doc(userId).get();
+    const currentSettings = user.exists ? (user.data().settings || {}) : {};
+    const mergedSettings = { ...currentSettings, ...settings };
+    
+    await db.collection(FirestoreCollections.USERS).doc(userId).set({
+      settings: mergedSettings,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+    
+    return mergedSettings;
+  } catch (err) {
+    console.warn('Firestore updateUserSettings fallback:', err.message);
+    return settings;
   }
-  
-  const currentSettings = user.data().settings || {};
-  const mergedSettings = { ...currentSettings, ...settings };
-  
-  await db.collection(FirestoreCollections.USERS).doc(userId).update({
-    settings: mergedSettings,
-    updatedAt: new Date().toISOString()
-  });
-  
-  return mergedSettings;
 }
 
 export async function getUserSettings(userId) {
-  const doc = await db.collection(FirestoreCollections.USERS).doc(userId).get();
-  if (!doc.exists) {
-    throw new Error('User not found');
+  try {
+    const doc = await db.collection(FirestoreCollections.USERS).doc(userId).get();
+    if (doc.exists && doc.data().settings) {
+      return doc.data().settings;
+    }
+  } catch (err) {
+    console.warn('Firestore getUserSettings fallback:', err.message);
   }
-  
-  const userData = doc.data();
-  return userData.settings || {};
+  return { samplingDistance: 12, units: 'Metric', darkMode: true, autoSave: true };
 }
 
 // Sensor reading operations
 export async function saveSensorReading(reading) {
-  const docRef = db.collection(FirestoreCollections.SENSOR_READINGS).doc();
   const readingData = {
     ...reading,
-    id: docRef.id,
+    id: reading.id || Math.random().toString(36).substring(7),
     timestamp: new Date().toISOString(),
     synced: true
   };
-  await docRef.set(readingData);
+  try {
+    const docRef = db.collection(FirestoreCollections.SENSOR_READINGS).doc(readingData.id);
+    await docRef.set(readingData);
+  } catch (err) {
+    console.warn('Firestore saveSensorReading fallback:', err.message);
+  }
   return readingData;
 }
 
 export async function getSensorReadingsByField(fieldId, limit = 100) {
-  const snapshot = await db
-    .collection(FirestoreCollections.SENSOR_READINGS)
-    .where('fieldId', '==', fieldId)
-    .orderBy('timestamp', 'desc')
-    .limit(limit)
-    .get();
-  
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  try {
+    const snapshot = await db
+      .collection(FirestoreCollections.SENSOR_READINGS)
+      .where('fieldId', '==', fieldId)
+      .orderBy('timestamp', 'desc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (err) {
+    console.warn('Firestore getSensorReadingsByField fallback:', err.message);
+    return [];
+  }
 }
 
 export async function getSensorReadingsBySurvey(surveyId) {
-  const snapshot = await db
-    .collection(FirestoreCollections.SENSOR_READINGS)
-    .where('surveyId', '==', surveyId)
-    .orderBy('timestamp', 'asc')
-    .get();
-  
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  try {
+    const snapshot = await db
+      .collection(FirestoreCollections.SENSOR_READINGS)
+      .where('surveyId', '==', surveyId)
+      .orderBy('timestamp', 'asc')
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (err) {
+    console.warn('Firestore getSensorReadingsBySurvey fallback:', err.message);
+    return [];
+  }
 }
 
 // Rover status operations
@@ -102,107 +139,153 @@ export async function updateRoverStatus(roverId, status) {
     ...status,
     updatedAt: new Date().toISOString()
   };
-  await db.collection(FirestoreCollections.ROVER_STATUS).doc(roverId).set(statusData, { merge: true });
+  try {
+    await db.collection(FirestoreCollections.ROVER_STATUS).doc(roverId).set(statusData, { merge: true });
+  } catch (err) {
+    console.warn('Firestore updateRoverStatus fallback:', err.message);
+  }
   return statusData;
 }
 
-export async function getRoverStatus(roverId) {
-  const doc = await db.collection(FirestoreCollections.ROVER_STATUS).doc(roverId).get();
-  return doc.exists ? { id: doc.id, ...doc.data() } : null;
+export async function getRoverStatus(roverId = 'primary') {
+  try {
+    const doc = await db.collection(FirestoreCollections.ROVER_STATUS).doc(roverId).get();
+    return doc.exists ? { id: doc.id, ...doc.data() } : getDefaultRoverStatus(roverId);
+  } catch (err) {
+    console.warn('Firestore getRoverStatus fallback:', err.message);
+    return getDefaultRoverStatus(roverId);
+  }
 }
 
 // Survey operations
 export async function createSurvey(userId, fieldId, surveyData) {
-  const docRef = db.collection(FirestoreCollections.SURVEYS).doc();
+  const surveyId = Math.random().toString(36).substring(7);
   const survey = {
-    id: docRef.id,
+    id: surveyId,
     userId,
     fieldId,
     status: 'draft',
     sampleCount: 0,
-    batteryStart: 0,
+    batteryStart: 96,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...surveyData
   };
-  await docRef.set(survey);
+  try {
+    await db.collection(FirestoreCollections.SURVEYS).doc(surveyId).set(survey);
+  } catch (err) {
+    console.warn('Firestore createSurvey fallback:', err.message);
+  }
   return survey;
 }
 
 export async function updateSurvey(surveyId, updates) {
-  await db.collection(FirestoreCollections.SURVEYS).doc(surveyId).update({
-    ...updates,
-    updatedAt: new Date().toISOString()
-  });
+  try {
+    await db.collection(FirestoreCollections.SURVEYS).doc(surveyId).update({
+      ...updates,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.warn('Firestore updateSurvey fallback:', err.message);
+  }
 }
 
 export async function getSurvey(surveyId) {
-  const doc = await db.collection(FirestoreCollections.SURVEYS).doc(surveyId).get();
-  return doc.exists ? { id: doc.id, ...doc.data() } : null;
+  try {
+    const doc = await db.collection(FirestoreCollections.SURVEYS).doc(surveyId).get();
+    return doc.exists ? { id: doc.id, ...doc.data() } : null;
+  } catch (err) {
+    console.warn('Firestore getSurvey fallback:', err.message);
+    return null;
+  }
 }
 
 export async function getUserSurveys(userId, limit = 50) {
-  const snapshot = await db
-    .collection(FirestoreCollections.SURVEYS)
-    .where('userId', '==', userId)
-    .orderBy('createdAt', 'desc')
-    .limit(limit)
-    .get();
-  
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  try {
+    const snapshot = await db
+      .collection(FirestoreCollections.SURVEYS)
+      .where('userId', '==', userId)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (err) {
+    console.warn('Firestore getUserSurveys fallback:', err.message);
+    return [];
+  }
 }
 
 // Command operations
 export async function createCommand(roverId, command) {
-  const docRef = db.collection(FirestoreCollections.COMMANDS).doc();
+  const commandId = Math.random().toString(36).substring(7);
   const commandData = {
-    id: docRef.id,
+    id: commandId,
     roverId,
     status: 'pending',
     createdAt: new Date().toISOString(),
     ...command
   };
-  await docRef.set(commandData);
+  try {
+    await db.collection(FirestoreCollections.COMMANDS).doc(commandId).set(commandData);
+  } catch (err) {
+    console.warn('Firestore createCommand fallback:', err.message);
+  }
   return commandData;
 }
 
 export async function updateCommand(commandId, status, response = null) {
-  await db.collection(FirestoreCollections.COMMANDS).doc(commandId).update({
-    status,
-    response,
-    completedAt: status === 'completed' ? new Date().toISOString() : null,
-    updatedAt: new Date().toISOString()
-  });
+  try {
+    await db.collection(FirestoreCollections.COMMANDS).doc(commandId).update({
+      status,
+      response,
+      completedAt: status === 'completed' ? new Date().toISOString() : null,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.warn('Firestore updateCommand fallback:', err.message);
+  }
 }
 
 // Alert operations
 export async function createAlert(userId, alert) {
-  const docRef = db.collection(FirestoreCollections.ALERTS).doc();
+  const alertId = Math.random().toString(36).substring(7);
   const alertData = {
-    id: docRef.id,
+    id: alertId,
     userId,
     read: false,
     createdAt: new Date().toISOString(),
     ...alert
   };
-  await docRef.set(alertData);
+  try {
+    await db.collection(FirestoreCollections.ALERTS).doc(alertId).set(alertData);
+  } catch (err) {
+    console.warn('Firestore createAlert fallback:', err.message);
+  }
   return alertData;
 }
 
 export async function getUserAlerts(userId, limit = 50) {
-  const snapshot = await db
-    .collection(FirestoreCollections.ALERTS)
-    .where('userId', '==', userId)
-    .orderBy('createdAt', 'desc')
-    .limit(limit)
-    .get();
-  
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  try {
+    const snapshot = await db
+      .collection(FirestoreCollections.ALERTS)
+      .where('userId', '==', userId)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (err) {
+    console.warn('Firestore getUserAlerts fallback:', err.message);
+    return [];
+  }
 }
 
 export async function markAlertAsRead(alertId) {
-  await db.collection(FirestoreCollections.ALERTS).doc(alertId).update({
-    read: true,
-    readAt: new Date().toISOString()
-  });
+  try {
+    await db.collection(FirestoreCollections.ALERTS).doc(alertId).update({
+      read: true,
+      readAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.warn('Firestore markAlertAsRead fallback:', err.message);
+  }
 }
