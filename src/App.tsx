@@ -148,8 +148,8 @@ export default function App() {
   }} settings={settings} />;
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#f5faf5] text-slate-950 transition-colors dark:bg-[#0a0d0b] dark:text-white">
-      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_15%_10%,rgba(102,187,106,.26),transparent_28%),radial-gradient(circle_at_88%_2%,rgba(46,125,50,.20),transparent_26%),linear-gradient(135deg,rgba(255,255,255,.94),rgba(236,249,236,.9))] dark:bg-[radial-gradient(circle_at_15%_10%,rgba(102,187,106,.14),transparent_28%),radial-gradient(circle_at_88%_2%,rgba(46,125,50,.18),transparent_26%),linear-gradient(135deg,#0a0d0b,#131916)]" />
+    <div className="min-h-screen overflow-hidden bg-[#f5faf5] text-slate-950 transition-colors dark:bg-black dark:text-white">
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_15%_10%,rgba(102,187,106,.26),transparent_28%),radial-gradient(circle_at_88%_2%,rgba(46,125,50,.20),transparent_26%),linear-gradient(135deg,rgba(255,255,255,.94),rgba(236,249,236,.9))] dark:bg-[radial-gradient(circle_at_15%_10%,rgba(102,187,106,.14),transparent_28%),radial-gradient(circle_at_88%_2%,rgba(46,125,50,.18),transparent_26%),linear-gradient(135deg,#000000,#0a0f0b)]" />
       <Sidebar page={page} setPage={setPage} open={menuOpen} close={() => setMenuOpen(false)} user={currentUser} onLogout={handleLogout} />
       <main className="min-h-screen lg:pl-72">
         <Topbar
@@ -213,8 +213,8 @@ function LoginScreen({ users, onLogin, settings }: { users: User[]; onLogin: (us
     document.documentElement.classList.toggle('dark', Boolean(settings?.darkMode));
   }, [settings?.darkMode]);
   return (
-    <div className="min-h-screen bg-[#f5faf5] px-4 py-10 text-slate-950 dark:bg-[#0a0d0b] dark:text-white">
-      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_10%,rgba(102,187,106,.28),transparent_28%),linear-gradient(135deg,rgba(255,255,255,.95),rgba(230,247,231,.92))] dark:bg-[radial-gradient(circle_at_20%_10%,rgba(102,187,106,.14),transparent_28%),linear-gradient(135deg,#0a0d0b,#131916)]" />
+    <div className="min-h-screen bg-[#f5faf5] px-4 py-10 text-slate-950 dark:bg-black dark:text-white">
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_10%,rgba(102,187,106,.28),transparent_28%),linear-gradient(135deg,rgba(255,255,255,.95),rgba(230,247,231,.92))] dark:bg-[radial-gradient(circle_at_20%_10%,rgba(102,187,106,.14),transparent_28%),linear-gradient(135deg,#000000,#0a0f0b)]" />
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-5xl items-center justify-center">
         <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="glass w-full rounded-[2rem] p-6 sm:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -246,7 +246,7 @@ function LoginScreen({ users, onLogin, settings }: { users: User[]; onLogin: (us
 
 function LoadingScreen() {
   return (
-    <div className="grid min-h-screen place-items-center bg-[#f5faf5] dark:bg-[#0a0d0b]">
+    <div className="grid min-h-screen place-items-center bg-[#f5faf5] dark:bg-black">
       <motion.div initial={{ scale: 0.94, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="glass flex items-center gap-3 rounded-3xl px-6 py-4">
         <Leaf className="text-primary" />
         <span className="font-semibold">Loading AgriSense offline workspace...</span>
@@ -311,7 +311,7 @@ function Sidebar({ page, setPage, open, close, user, onLogout }: { page: Page; s
 
 function Topbar({ page, user, users, setUser, onLogout, online, pending, openMenu, settings }: { page: Page; user: User; users: User[]; setUser: (user: User) => void; onLogout: () => void; online: boolean; pending: number; openMenu: () => void; settings?: Settings }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-white/40 bg-[#f5faf5]/75 backdrop-blur-2xl dark:border-white/10 dark:bg-[#0a0d0b]/75">
+    <header className="sticky top-0 z-20 border-b border-white/40 bg-[#f5faf5]/75 backdrop-blur-2xl dark:border-white/10 dark:bg-black/80">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3">
           <button aria-label="Open navigation" onClick={openMenu} className="icon-btn lg:hidden">
