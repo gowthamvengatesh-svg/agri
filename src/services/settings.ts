@@ -1,4 +1,5 @@
 import { apiCall } from './api';
+import { db } from '../lib/db';
 import type { Settings } from '../types';
 
 export interface UserSettingsResponse {
@@ -17,15 +18,38 @@ export interface UserSettingsResponse {
   updatedAt: string;
 }
 
-/**
- * Get user settings from Firestore
- */
-export async function getUserSettings(): Promise<UserSettingsResponse> {
-  return apiCall<UserSettingsResponse>('/settings');
+function getDefaultSettingsResponse(updates: Record<string, any> = {}): UserSettingsResponse {
+  return {
+    userId: 'local-user',
+    settings: {
+      samplingDistance: 12,
+      units: 'Metric',
+      darkMode: true,
+      offlineSync: true,
+      language: 'English',
+      esp32IP: '',
+      wifiMode: 'WiFi',
+      autoConnect: true,
+      ...updates
+    },
+    updatedAt: new Date().toISOString()
+  };
 }
 
 /**
- * Update user settings in Firestore
+ * Get user settings with offline fallback
+ */
+export async function getUserSettings(): Promise<UserSettingsResponse> {
+  try {
+    return await apiCall<UserSettingsResponse>('/settings');
+  } catch {
+    const local = await db.settings.get('settings');
+    return getDefaultSettingsResponse(local || {});
+  }
+}
+
+/**
+ * Update user settings in Dexie local database and try backend sync
  */
 export async function updateUserSettings(updates: {
   samplingDistance?: number;
@@ -38,66 +62,67 @@ export async function updateUserSettings(updates: {
   autoConnect?: boolean;
   theme?: string;
 }): Promise<UserSettingsResponse> {
-  return apiCall<UserSettingsResponse>('/settings', {
-    method: 'PUT',
-    body: JSON.stringify(updates)
-  });
+  // Update local IndexedDB database immediately
+  try {
+    await db.settings.update('settings', updates);
+  } catch (err) {
+    console.warn('Local settings update notice:', err);
+  }
+
+  // Attempt backend sync
+  try {
+    return await apiCall<UserSettingsResponse>('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+  } catch {
+    // Return graceful success response so UI settings update seamlessly offline
+    return getDefaultSettingsResponse(updates);
+  }
 }
 
-/**
- * Local cache key for settings
- */
 const SETTINGS_CACHE_KEY = 'agrisense-settings-cache';
-const SETTINGS_CACHE_TIME = 60000; // 1 minute
+const SETTINGS_CACHE_TIME = 60000;
 
 interface CachedSettings {
   data: UserSettingsResponse;
   timestamp: number;
 }
 
-/**
- * Get settings with local caching
- */
 export async function getUserSettingsCached(): Promise<UserSettingsResponse> {
   const cached = localStorage.getItem(SETTINGS_CACHE_KEY);
   
   if (cached) {
-    const parsedCache = JSON.parse(cached) as CachedSettings;
-    const now = Date.now();
-    
-    if (now - parsedCache.timestamp < SETTINGS_CACHE_TIME) {
-      return parsedCache.data;
-    }
+    try {
+      const parsedCache = JSON.parse(cached) as CachedSettings;
+      const now = Date.now();
+      if (now - parsedCache.timestamp < SETTINGS_CACHE_TIME) {
+        return parsedCache.data;
+      }
+    } catch {}
   }
 
   const settings = await getUserSettings();
-  localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify({
-    data: settings,
-    timestamp: Date.now()
-  }));
+  try {
+    localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify({
+      data: settings,
+      timestamp: Date.now()
+    }));
+  } catch {}
 
   return settings;
 }
 
-/**
- * Clear settings cache
- */
 export function clearSettingsCache() {
   localStorage.removeItem(SETTINGS_CACHE_KEY);
 }
 
-/**
- * Update settings and refresh cache
- */
 export async function updateUserSettingsWithCache(updates: any): Promise<UserSettingsResponse> {
   const result = await updateUserSettings(updates);
   clearSettingsCache();
   return result;
 }
 
-/**
- * Get a specific setting value
- */
 export async function getSetting<K extends keyof UserSettingsResponse['settings']>(
   key: K
 ): Promise<UserSettingsResponse['settings'][K]> {
@@ -105,9 +130,6 @@ export async function getSetting<K extends keyof UserSettingsResponse['settings'
   return settings.settings[key];
 }
 
-/**
- * Update a specific setting
- */
 export async function updateSetting<K extends keyof UserSettingsResponse['settings']>(
   key: K,
   value: UserSettingsResponse['settings'][K]
@@ -117,21 +139,14 @@ export async function updateSetting<K extends keyof UserSettingsResponse['settin
   });
 }
 
-/**
- * Listen to settings changes (real-time via Firestore listener)
- */
 export function onSettingsChange(
   callback: (settings: UserSettingsResponse) => void
 ): () => void {
-  // Note: Requires Firestore listener setup in backend
-  // For now, using polling as fallback
   const interval = setInterval(async () => {
     try {
       const settings = await getUserSettings();
       callback(settings);
-    } catch (err) {
-      console.error('Failed to listen to settings changes:', err);
-    }
+    } catch {}
   }, SETTINGS_CACHE_TIME);
 
   return () => clearInterval(interval);
