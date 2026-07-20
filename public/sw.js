@@ -1,4 +1,4 @@
-const CACHE_NAME = 'agrisense-ai-rover-v1';
+const CACHE_NAME = 'agrisense-ai-rover-v3';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.svg', '/icons/icon-512.svg'];
 
 self.addEventListener('install', (event) => {
@@ -23,7 +23,7 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
-      const network = fetch(event.request)
+      const network = fetch(event.request, { cache: 'no-cache' })
         .then((response) => {
           if (response.status === 200 && response.type === 'basic') {
             const copy = response.clone();

@@ -40,13 +40,15 @@ export async function apiCall<T>(
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      const error = await response.json().catch(() => ({ error: `API Error: ${response.statusText}` }));
       throw new Error(error.error || `API Error: ${response.statusText}`);
     }
 
     return response.json();
   } catch (error) {
-    console.error('API call failed:', error);
+    if (import.meta.env.DEV) {
+      console.debug('API call info:', error);
+    }
     throw error;
   }
 }
@@ -66,13 +68,15 @@ export async function publicApiCall<T>(
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      const error = await response.json().catch(() => ({ error: `API Error: ${response.statusText}` }));
       throw new Error(error.error || `API Error: ${response.statusText}`);
     }
 
     return response.json();
   } catch (error) {
-    console.error('Public API call failed:', error);
+    if (import.meta.env.DEV) {
+      console.debug('Public API call info:', error);
+    }
     throw error;
   }
 }
