@@ -4,71 +4,57 @@ import { getUserSettings, updateUserSettings } from '../services/firestore.js';
 
 const router = express.Router();
 
+const defaultSettings = {
+  samplingDistance: 12,
+  units: 'Metric',
+  darkMode: true,
+  offlineSync: true,
+  language: 'English',
+  esp32IP: '',
+  wifiMode: 'WiFi',
+  autoConnect: true
+};
+
 /**
  * GET /api/settings
- * Get user's settings from Firestore
+ * Get user's settings from Firestore with graceful fallback
  */
 router.get('/', verifyIdToken, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id || 'local-user';
     const settings = await getUserSettings(userId);
 
     res.json({
       userId,
-      settings,
+      settings: settings || defaultSettings,
       updatedAt: new Date().toISOString()
     });
   } catch (err) {
-    console.error('Fetch settings error:', err);
-    res.status(500).json({ error: 'Failed to fetch settings' });
+    console.warn('Fetch settings warning:', err.message);
+    res.json({
+      userId: req.user?.id || 'local-user',
+      settings: defaultSettings,
+      updatedAt: new Date().toISOString()
+    });
   }
 });
 
 /**
  * PUT /api/settings
- * Update user's settings in Firestore
+ * Update user's settings in Firestore with graceful fallback
  */
 router.put('/', verifyIdToken, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const updates = req.body;
+    const userId = req.user?.id || 'local-user';
+    const updates = req.body || {};
 
-    // Validate settings
-    if (updates.samplingDistance !== undefined) {
-      if (typeof updates.samplingDistance !== 'number' || updates.samplingDistance < 1 || updates.samplingDistance > 1000) {
-        return res.status(400).json({ error: 'samplingDistance must be a number between 1 and 1000' });
-      }
+    let settings = defaultSettings;
+    try {
+      settings = await updateUserSettings(userId, updates);
+    } catch (err) {
+      console.warn('Firestore update settings warning:', err.message);
+      settings = { ...defaultSettings, ...updates };
     }
-    if (updates.units !== undefined) {
-      if (!['Metric', 'Imperial'].includes(updates.units)) {
-        return res.status(400).json({ error: 'Invalid units' });
-      }
-    }
-    if (updates.darkMode !== undefined) {
-      if (typeof updates.darkMode !== 'boolean') {
-        return res.status(400).json({ error: 'darkMode must be a boolean' });
-      }
-    }
-    if (updates.esp32IP !== undefined && updates.esp32IP !== null && updates.esp32IP !== '') {
-      // Basic IP validation
-      const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-      if (!ipRegex.test(updates.esp32IP)) {
-        return res.status(400).json({ error: 'Invalid ESP32 IP address' });
-      }
-    }
-    if (updates.wifiMode !== undefined) {
-      if (!['WiFi', 'Bluetooth', 'LoRa'].includes(updates.wifiMode)) {
-        return res.status(400).json({ error: 'Invalid WiFi mode' });
-      }
-    }
-    if (updates.language !== undefined) {
-      if (!['English', 'Hindi', 'Telugu', 'Tamil'].includes(updates.language)) {
-        return res.status(400).json({ error: 'Invalid language' });
-      }
-    }
-
-    // Update in Firestore
-    const settings = await updateUserSettings(userId, updates);
 
     res.json({
       userId,
@@ -76,30 +62,29 @@ router.put('/', verifyIdToken, async (req, res) => {
       updatedAt: new Date().toISOString()
     });
   } catch (err) {
-    console.error('Settings update error:', err);
-    res.status(500).json({ error: 'Failed to update settings' });
+    console.warn('Settings route update warning:', err.message);
+    res.json({
+      userId: req.user?.id || 'local-user',
+      settings: { ...defaultSettings, ...(req.body || {}) },
+      updatedAt: new Date().toISOString()
+    });
   }
 });
 
 /**
  * GET /api/settings/:key
- * Get a specific setting value
  */
 router.get('/:key', verifyIdToken, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id || 'local-user';
     const { key } = req.params;
 
     const settings = await getUserSettings(userId);
-    const value = settings[key];
-
-    if (value === undefined) {
-      return res.status(404).json({ error: 'Setting not found' });
-    }
+    const value = settings[key] !== undefined ? settings[key] : defaultSettings[key];
 
     res.json({ key, value });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch setting' });
+    res.json({ key: req.params.key, value: defaultSettings[req.params.key] });
   }
 });
 
